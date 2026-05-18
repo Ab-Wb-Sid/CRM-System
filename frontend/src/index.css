@@ -1,0 +1,258 @@
+/* ═══════════════════════════════════════════════════════
+   SANESTIX CRM — Global Design System
+   Dark Glassmorphism Theme
+═══════════════════════════════════════════════════════ */
+
+:root {
+  /* Color Palette */
+  --color-bg-base: #070b14;
+  --color-bg-surface: #0d1526;
+  --color-bg-elevated: #111d35;
+  --color-bg-overlay: rgba(13, 21, 38, 0.85);
+
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-bright: rgba(255, 255, 255, 0.15);
+
+  /* Neon Accents */
+  --color-neon-green: #00ff87;
+  --color-neon-green-dim: rgba(0, 255, 135, 0.15);
+  --color-neon-purple: #bf5af2;
+  --color-neon-purple-dim: rgba(191, 90, 242, 0.15);
+  --color-neon-amber: #ff9f0a;
+  --color-neon-amber-dim: rgba(255, 159, 10, 0.15);
+  --color-neon-blue: #0a84ff;
+  --color-neon-blue-dim: rgba(10, 132, 255, 0.15);
+  --color-neon-red: #ff453a;
+  --color-neon-red-dim: rgba(255, 69, 58, 0.15);
+
+  /* Text */
+  --color-text-primary: #f0f4ff;
+  --color-text-secondary: #8b9cc8;
+  --color-text-muted: #4a5a7a;
+
+  /* Fonts */
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* ─── Base ──────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background-color: var(--color-bg-base);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ─── Glassmorphism Utilities ───────────────────────── */
+.glass {
+  background: rgba(13, 21, 38, 0.6);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-card {
+  background: rgba(17, 29, 53, 0.7);
+  backdrop-filter: blur(20px) saturate(200%);
+  -webkit-backdrop-filter: blur(20px) saturate(200%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 4px 6px rgba(0, 0, 0, 0.3),
+    0 1px 3px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.glass-hover {
+  transition: all 0.2s ease;
+}
+
+.glass-hover:hover {
+  background: rgba(17, 29, 53, 0.85);
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transform: translateY(-1px);
+}
+
+/* ─── Custom Scrollbar ──────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* ─── Neon Glow Effects ─────────────────────────────── */
+.glow-green {
+  box-shadow: 0 0 12px rgba(0, 255, 135, 0.4), 0 0 40px rgba(0, 255, 135, 0.1);
+}
+
+.glow-purple {
+  box-shadow: 0 0 12px rgba(191, 90, 242, 0.4), 0 0 40px rgba(191, 90, 242, 0.1);
+}
+
+.glow-amber {
+  box-shadow: 0 0 12px rgba(255, 159, 10, 0.4), 0 0 40px rgba(255, 159, 10, 0.1);
+}
+
+.glow-blue {
+  box-shadow: 0 0 12px rgba(10, 132, 255, 0.4), 0 0 40px rgba(10, 132, 255, 0.1);
+}
+
+/* ─── Grid Background Pattern ───────────────────────── */
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* ─── Animations ────────────────────────────────────── */
+@keyframes pulse-neon {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-pulse-neon { animation: pulse-neon 2s ease-in-out infinite; }
+.animate-float { animation: float 3s ease-in-out infinite; }
+
+.skeleton {
+  background: linear-gradient(90deg,
+    rgba(255,255,255,0.04) 0%,
+    rgba(255,255,255,0.08) 50%,
+    rgba(255,255,255,0.04) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* ─── Typography ────────────────────────────────────── */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--color-text-primary);
+}
+
+/* ─── Focus Styles ──────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--color-neon-blue);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ─── Input Base ────────────────────────────────────── */
+input, textarea, select {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--color-text-primary);
+  font-family: inherit;
+  border-radius: 6px;
+  padding: 6px 10px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--color-neon-blue);
+  box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.2);
+}
+
+/* ─── Kanban ────────────────────────────────────────── */
+.kanban-card-dragging {
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 20px rgba(10, 132, 255, 0.3);
+  transform: rotate(2deg) scale(1.02);
+  z-index: 9999;
+}
+
+/* Local utility classes used by the app. This keeps the frontend build independent
+   from Tailwind's native oxide package, which is fragile on this machine. */
+.absolute { position: absolute; }
+.relative { position: relative; }
+.left-0 { left: 0; }
+.right-0 { right: 0; }
+.top-1\/2 { top: 50%; }
+.mt-0\.5 { margin-top: 2px; }
+.flex { display: flex; }
+.grid { display: grid; }
+.h-screen { height: 100vh; }
+.flex-1 { flex: 1 1 0%; }
+.flex-shrink-0 { flex-shrink: 0; }
+.flex-col { flex-direction: column; }
+.flex-wrap { flex-wrap: wrap; }
+.items-start { align-items: flex-start; }
+.items-center { align-items: center; }
+.justify-center { justify-content: center; }
+.justify-between { justify-content: space-between; }
+.gap-1 { gap: 4px; }
+.gap-1\.5 { gap: 6px; }
+.gap-2 { gap: 8px; }
+.gap-3 { gap: 12px; }
+.gap-4 { gap: 16px; }
+.overflow-hidden { overflow: hidden; }
+.overflow-x-auto { overflow-x: auto; }
+.overflow-x-hidden { overflow-x: hidden; }
+.overflow-y-auto { overflow-y: auto; }
+.pb-4 { padding-bottom: 16px; }
+.px-2 { padding-left: 8px; padding-right: 8px; }
+.px-3 { padding-left: 12px; padding-right: 12px; }
+.px-4 { padding-left: 16px; padding-right: 16px; }
+.px-6 { padding-left: 24px; padding-right: 24px; }
+.py-1 { padding-top: 4px; padding-bottom: 4px; }
+.py-1\.5 { padding-top: 6px; padding-bottom: 6px; }
+.py-2 { padding-top: 8px; padding-bottom: 8px; }
+.py-2\.5 { padding-top: 10px; padding-bottom: 10px; }
+.py-3 { padding-top: 12px; padding-bottom: 12px; }
+.py-5 { padding-top: 20px; padding-bottom: 20px; }
+.rounded { border-radius: 4px; }
+.rounded-md { border-radius: 6px; }
+.rounded-lg { border-radius: 8px; }
+.rounded-xl { border-radius: 12px; }
+.rounded-2xl { border-radius: 16px; }
+.rounded-full { border-radius: 9999px; }
+.rounded-r-full { border-top-right-radius: 9999px; border-bottom-right-radius: 9999px; }
+.border-r { border-right: 1px solid var(--color-border); }
+.font-bold { font-weight: 700; }
+.font-semibold { font-weight: 600; }
+.text-black { color: #000; }
+.cursor-default { cursor: default; }
+.cursor-pointer { cursor: pointer; }
+.pointer-events-none { pointer-events: none; }
+.select-none { user-select: none; }
+.transition-all { transition-property: all; }
+.transition-colors { transition-property: color, background-color, border-color, text-decoration-color, fill, stroke; }
+.duration-200 { transition-duration: 200ms; }

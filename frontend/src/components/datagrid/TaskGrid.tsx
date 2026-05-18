@@ -1,0 +1,338 @@
+// ═══════════════════════════════════════════════════════
+//  TaskGrid — Advanced Data Grid with TanStack Table v8
+//  Features: sticky header, sorting, filtering, inline edit
+// ═══════════════════════════════════════════════════════
+import React, { useState, useMemo, useCallback } from 'react';
+import {
+  useReactTable, getCoreRowModel, getSortedRowModel,
+  getFilteredRowModel, flexRender,
+  type ColumnDef, type SortingState, type ColumnFiltersState,
+} from '@tanstack/react-table';
+import { motion } from 'framer-motion';
+import { ArrowUpDown, ArrowUp, ArrowDown, Search } from 'lucide-react';
+import { NeonBadge } from '../ui/NeonBadge';
+import { InlineEditCell } from './InlineEditCell';
+import { useGetTasksQuery, useUpdateTaskMutation } from '../../store/api/crmApi';
+import type { Task, TaskStatus, TaskPriority } from '../../types';
+
+const PRIORITY_ORDER: Record<TaskPriority, number> = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+
+export const TaskGrid: React.FC = () => {
+  const { data: tasks = [], isLoading } = useGetTasksQuery();
+  const [updateTask] = useUpdateTaskMutation();
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [globalFilter, setGlobalFilter] = useState('');
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+
+  const handleCellEdit = useCallback(
+    async (id: string, field: keyof Task, value: unknown) => {
+      await updateTask({ id, [field]: value });
+    },
+    [updateTask],
+  );
+
+  const columns = useMemo<ColumnDef<Task>[]>(() => [
+    {
+      id: 'priority',
+      accessorKey: 'priority',
+      header: 'P',
+      size: 42,
+      sortingFn: (a, b) =>
+        PRIORITY_ORDER[a.original.priority] - PRIORITY_ORDER[b.original.priority],
+      cell: ({ getValue }) => {
+        const v = getValue() as TaskPriority;
+        const colors: Record<TaskPriority, string> = {
+          Critical: 'var(--color-neon-red)',
+          High: 'var(--color-neon-amber)',
+          Medium: 'var(--color-neon-blue)',
+          Low: 'var(--color-text-muted)',
+        };
+        return (
+          <div
+            title={v}
+            style={{
+              width: 8, height: 8, borderRadius: '50%',
+              background: colors[v], margin: '0 auto',
+              boxShadow: v === 'Critical' ? `0 0 6px ${colors[v]}` : undefined,
+            }}
+          />
+        );
+      },
+    },
+    {
+      id: 'title',
+      accessorKey: 'title',
+      header: 'Task',
+      size: 280,
+      cell: ({ getValue, row }) => (
+        <InlineEditCell
+          value={getValue() as string}
+          onCommit={val => handleCellEdit(row.original.id, 'title', val)}
+        />
+      ),
+    },
+    {
+      id: 'status',
+      accessorKey: 'status',
+      header: 'Status',
+      size: 110,
+      cell: ({ getValue, row }) => (
+        <StatusSelectCell
+          value={getValue() as TaskStatus}
+          onChange={val => handleCellEdit(row.original.id, 'status', val)}
+        />
+      ),
+    },
+    {
+      id: 'projectName',
+      accessorKey: 'projectName',
+      header: 'Project',
+      size: 160,
+      cell: ({ getValue }) => (
+        <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{getValue() as string}</span>
+      ),
+    },
+    {
+      id: 'assigneeName',
+      accessorKey: 'assigneeName',
+      header: 'Assignee',
+      size: 130,
+      cell: ({ getValue }) => {
+        const name = getValue() as string;
+        const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2);
+        return (
+          <div className="flex items-center gap-2">
+            <div
+              className="flex items-center justify-center rounded-md font-bold flex-shrink-0"
+              style={{
+                width: 22, height: 22, fontSize: 9,
+                background: 'linear-gradient(135deg, var(--color-neon-blue), var(--color-neon-purple))',
+                color: '#fff',
+              }}
+            >
+              {initials}
+            </div>
+            <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{name.split(' ')[0]}</span>
+          </div>
+        );
+      },
+    },
+    {
+      id: 'storyPoints',
+      accessorKey: 'storyPoints',
+      header: 'SP',
+      size: 50,
+      cell: ({ getValue }) => (
+        <div
+          className="flex items-center justify-center rounded-md font-bold"
+          style={{
+            width: 24, height: 24, fontSize: 10, margin: '0 auto',
+            background: 'rgba(10,132,255,0.15)',
+            color: 'var(--color-neon-blue)',
+            border: '1px solid rgba(10,132,255,0.25)',
+          }}
+        >
+          {getValue() as number}
+        </div>
+      ),
+    },
+    {
+      id: 'epic',
+      accessorKey: 'epic',
+      header: 'Epic',
+      size: 110,
+      cell: ({ getValue }) => (
+        <span style={{
+          fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 4,
+          background: 'rgba(191,90,242,0.12)', color: 'var(--color-neon-purple)',
+          border: '1px solid rgba(191,90,242,0.2)',
+        }}>
+          {getValue() as string}
+        </span>
+      ),
+    },
+    {
+      id: 'dueDate',
+      accessorKey: 'dueDate',
+      header: 'Due',
+      size: 90,
+      cell: ({ getValue }) => {
+        const d = new Date(getValue() as string);
+        const daysLeft = Math.ceil((d.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+        const color = daysLeft < 0 ? 'var(--color-neon-red)' : daysLeft < 3 ? 'var(--color-neon-amber)' : 'var(--color-text-muted)';
+        return (
+          <span style={{ fontSize: 11, color }}>
+            {d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          </span>
+        );
+      },
+    },
+    {
+      id: 'sprint',
+      accessorKey: 'sprint',
+      header: 'Sprint',
+      size: 80,
+      cell: ({ getValue }) => (
+        <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{getValue() as string}</span>
+      ),
+    },
+  ], [handleCellEdit]);
+
+  const table = useReactTable({
+    data: tasks,
+    columns,
+    state: { sorting, globalFilter, columnFilters },
+    onSortingChange: setSorting,
+    onGlobalFilterChange: setGlobalFilter,
+    onColumnFiltersChange: setColumnFilters,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-2">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="skeleton rounded-xl" style={{ height: 44 }} />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Toolbar */}
+      <div className="flex items-center justify-between" style={{ marginBottom: 12 }}>
+        <div className="relative flex items-center" style={{ width: 260 }}>
+          <Search size={13} style={{ position: 'absolute', left: 10, color: 'var(--color-text-muted)', pointerEvents: 'none' }} />
+          <input
+            type="text"
+            placeholder="Search tasks..."
+            value={globalFilter}
+            onChange={e => setGlobalFilter(e.target.value)}
+            style={{ width: '100%', paddingLeft: 30, height: 32, fontSize: 12 }}
+          />
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
+          {table.getFilteredRowModel().rows.length} of {tasks.length} tasks
+        </div>
+      </div>
+
+      {/* Table */}
+      <div
+        className="glass-card rounded-xl overflow-hidden"
+        style={{ maxHeight: 480, overflowY: 'auto' }}
+      >
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          {/* Sticky Header */}
+          <thead style={{
+            position: 'sticky', top: 0, zIndex: 10,
+            background: 'rgba(7,11,20,0.95)',
+            backdropFilter: 'blur(12px)',
+          }}>
+            {table.getHeaderGroups().map(hg => (
+              <tr key={hg.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                {hg.headers.map(header => (
+                  <th
+                    key={header.id}
+                    onClick={header.column.getToggleSortingHandler()}
+                    style={{
+                      padding: '10px 12px',
+                      textAlign: 'left',
+                      fontSize: 10,
+                      fontWeight: 700,
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                      color: 'var(--color-text-muted)',
+                      cursor: header.column.getCanSort() ? 'pointer' : 'default',
+                      width: header.column.getSize(),
+                      userSelect: 'none',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      {flexRender(header.column.columnDef.header, header.getContext())}
+                      {header.column.getCanSort() && (
+                        <span style={{ opacity: 0.5 }}>
+                          {header.column.getIsSorted() === 'asc'
+                            ? <ArrowUp size={10} />
+                            : header.column.getIsSorted() === 'desc'
+                            ? <ArrowDown size={10} />
+                            : <ArrowUpDown size={10} />
+                          }
+                        </span>
+                      )}
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            ))}
+          </thead>
+
+          <tbody>
+            {table.getRowModel().rows.map((row, rowIdx) => (
+              <motion.tr
+                key={row.id}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: rowIdx * 0.02 }}
+                style={{
+                  borderBottom: '1px solid rgba(255,255,255,0.04)',
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.025)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+              >
+                {row.getVisibleCells().map(cell => (
+                  <td
+                    key={cell.id}
+                    style={{
+                      padding: '8px 12px',
+                      fontSize: 12,
+                      verticalAlign: 'middle',
+                    }}
+                  >
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </td>
+                ))}
+              </motion.tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+// ── StatusSelectCell ─────────────────────────────────────
+const STATUS_OPTIONS: TaskStatus[] = ['Backlog', 'In Progress', 'In Review', 'Done', 'Blocked'];
+
+interface StatusSelectCellProps {
+  value: TaskStatus;
+  onChange: (val: TaskStatus) => void;
+}
+
+const StatusSelectCell: React.FC<StatusSelectCellProps> = ({ value, onChange }) => {
+  const [editing, setEditing] = useState(false);
+
+  if (editing) {
+    return (
+      <select
+        autoFocus
+        value={value}
+        onChange={e => { onChange(e.target.value as TaskStatus); setEditing(false); }}
+        onBlur={() => setEditing(false)}
+        style={{ fontSize: 11, height: 28, borderRadius: 6, minWidth: 100 }}
+      >
+        {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+      </select>
+    );
+  }
+
+  return (
+    <div onClick={() => setEditing(true)} style={{ cursor: 'pointer' }} title="Click to change status">
+      <NeonBadge value={value} dot />
+    </div>
+  );
+};
