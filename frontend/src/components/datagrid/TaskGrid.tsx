@@ -12,13 +12,21 @@ import { motion } from 'framer-motion';
 import { ArrowUpDown, ArrowUp, ArrowDown, Search, Trash2 } from 'lucide-react';
 import { NeonBadge } from '../ui/NeonBadge';
 import { InlineEditCell } from './InlineEditCell';
-import { useDeleteTaskMutation, useGetTasksQuery, useUpdateTaskMutation } from '../../store/api/crmApi';
-import type { Task, TaskStatus, TaskPriority } from '../../types';
+import {
+  useDeleteTaskMutation,
+  useGetDevelopersQuery,
+  useGetProjectsQuery,
+  useGetTasksQuery,
+  useUpdateTaskMutation,
+} from '../../store/api/crmApi';
+import type { Developer, Project, Task, TaskStatus, TaskPriority } from '../../types';
 
 const PRIORITY_ORDER: Record<TaskPriority, number> = { Critical: 0, High: 1, Medium: 2, Low: 3 };
 
 export const TaskGrid: React.FC = () => {
   const { data: tasks = [], isLoading } = useGetTasksQuery();
+  const { data: developers = [] } = useGetDevelopersQuery();
+  const { data: projects = [] } = useGetProjectsQuery();
   const [updateTask] = useUpdateTaskMutation();
   const [deleteTask] = useDeleteTaskMutation();
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -27,6 +35,21 @@ export const TaskGrid: React.FC = () => {
 
   const handleCellEdit = useCallback(
     async (id: string, field: keyof Task, value: unknown) => {
+      if (field === 'projectId') {
+        await updateTask({ id, project_id: value ? Number(value) : null });
+        return;
+      }
+      if (field === 'assigneeId') {
+        await updateTask({ id, assigned_to_developer_id: value ? Number(value) : null });
+        return;
+      }
+      if (field === 'dueDate') {
+        await updateTask({
+          id,
+          due_date: value ? new Date(`${value as string}T12:00:00`).toISOString() : null,
+        });
+        return;
+      }
       await updateTask({ id, [field]: value });
     },
     [updateTask],
@@ -89,8 +112,12 @@ export const TaskGrid: React.FC = () => {
       accessorKey: 'projectName',
       header: 'Project',
       size: 160,
-      cell: ({ getValue }) => (
-        <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{getValue() as string}</span>
+      cell: ({ row }) => (
+        <ProjectSelectCell
+          value={row.original.projectId}
+          projects={projects}
+          onChange={projectId => handleCellEdit(row.original.id, 'projectId', projectId)}
+        />
       ),
     },
     {
@@ -98,25 +125,13 @@ export const TaskGrid: React.FC = () => {
       accessorKey: 'assigneeName',
       header: 'Assignee',
       size: 130,
-      cell: ({ getValue }) => {
-        const name = getValue() as string;
-        const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2);
-        return (
-          <div className="flex items-center gap-2">
-            <div
-              className="flex items-center justify-center rounded-md font-bold flex-shrink-0"
-              style={{
-                width: 22, height: 22, fontSize: 9,
-                background: 'linear-gradient(135deg, var(--color-neon-blue), var(--color-neon-purple))',
-                color: '#fff',
-              }}
-            >
-              {initials}
-            </div>
-            <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{name.split(' ')[0]}</span>
-          </div>
-        );
-      },
+      cell: ({ row }) => (
+        <AssigneeSelectCell
+          value={row.original.assigneeId}
+          developers={developers}
+          onChange={developerId => handleCellEdit(row.original.id, 'assigneeId', developerId)}
+        />
+      ),
     },
     {
       id: 'storyPoints',
@@ -157,16 +172,12 @@ export const TaskGrid: React.FC = () => {
       accessorKey: 'dueDate',
       header: 'Due',
       size: 90,
-      cell: ({ getValue }) => {
-        const d = new Date(getValue() as string);
-        const daysLeft = Math.ceil((d.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-        const color = daysLeft < 0 ? 'var(--color-neon-red)' : daysLeft < 3 ? 'var(--color-neon-amber)' : 'var(--color-text-muted)';
-        return (
-          <span style={{ fontSize: 11, color }}>
-            {d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-          </span>
-        );
-      },
+      cell: ({ getValue, row }) => (
+        <DueDateCell
+          value={getValue() as string}
+          onChange={dateValue => handleCellEdit(row.original.id, 'dueDate', dateValue)}
+        />
+      ),
     },
     {
       id: 'sprint',
@@ -198,7 +209,7 @@ export const TaskGrid: React.FC = () => {
         </button>
       ),
     },
-  ], [deleteTask, handleCellEdit]);
+  ], [deleteTask, developers, handleCellEdit, projects]);
 
   const table = useReactTable({
     data: tasks,
@@ -356,5 +367,70 @@ const StatusSelectCell: React.FC<StatusSelectCellProps> = ({ value, onChange }) 
     <div onClick={() => setEditing(true)} style={{ cursor: 'pointer' }} title="Click to change status">
       <NeonBadge value={value} dot />
     </div>
+  );
+};
+
+interface ProjectSelectCellProps {
+  value: string;
+  projects: Project[];
+  onChange: (projectId: string) => void;
+}
+
+const ProjectSelectCell: React.FC<ProjectSelectCellProps> = ({ value, projects, onChange }) => (
+  <select
+    value={value || ''}
+    onChange={e => onChange(e.target.value)}
+    style={{ fontSize: 11, height: 28, borderRadius: 6, minWidth: 140, width: '100%' }}
+    title="Assign project"
+  >
+    <option value="">No project</option>
+    {projects.map(project => (
+      <option key={project.id} value={project.id}>{project.name}</option>
+    ))}
+  </select>
+);
+
+interface AssigneeSelectCellProps {
+  value: string;
+  developers: Developer[];
+  onChange: (developerId: string) => void;
+}
+
+const AssigneeSelectCell: React.FC<AssigneeSelectCellProps> = ({ value, developers, onChange }) => {
+  const selectedDeveloper = developers.find(dev => dev.userId === value || dev.id === value);
+  return (
+    <select
+      value={selectedDeveloper?.id ?? ''}
+      onChange={e => onChange(e.target.value)}
+      style={{ fontSize: 11, height: 28, borderRadius: 6, minWidth: 120, width: '100%' }}
+      title="Assign resource"
+    >
+      <option value="">Unassigned</option>
+      {developers.map(dev => (
+        <option key={dev.id} value={dev.id}>{dev.name}</option>
+      ))}
+    </select>
+  );
+};
+
+interface DueDateCellProps {
+  value: string;
+  onChange: (dateValue: string) => void;
+}
+
+const DueDateCell: React.FC<DueDateCellProps> = ({ value, onChange }) => {
+  const parsed = value ? new Date(value) : null;
+  const dateValue = parsed && !Number.isNaN(parsed.getTime())
+    ? parsed.toISOString().slice(0, 10)
+    : '';
+
+  return (
+    <input
+      type="date"
+      value={dateValue}
+      onChange={e => onChange(e.target.value)}
+      style={{ fontSize: 11, height: 28, minWidth: 118, padding: '4px 6px' }}
+      title="Set due date"
+    />
   );
 };

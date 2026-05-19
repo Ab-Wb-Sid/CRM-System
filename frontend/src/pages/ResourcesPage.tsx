@@ -1,18 +1,78 @@
 // ═══════════════════════════════════════════════════════
 //  Resources Page — Heatmap + Developer Cards
 // ═══════════════════════════════════════════════════════
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { ResourceHeatmap } from '../components/heatmap/ResourceHeatmap';
 import { GlassCard } from '../components/ui/GlassCard';
 import {
+  useCreateDeveloperMutation,
+  useDeleteDeveloperMutation,
   useGetDevelopersQuery,
   useGetHeatmapDataQuery,
+  useUpdateDeveloperMutation,
 } from '../store/api/crmApi';
+import { useAppDispatch } from '../store';
+import { addNotification } from '../store/slices/uiSlice';
+import type { Developer } from '../types';
 
 export const ResourcesPage: React.FC = () => {
+  const dispatch = useAppDispatch();
   const { data: developers = [] } = useGetDevelopersQuery();
   const { data: heatmapData = [], isLoading } = useGetHeatmapDataQuery();
+  const [createDeveloper] = useCreateDeveloperMutation();
+  const [updateDeveloper] = useUpdateDeveloperMutation();
+  const [deleteDeveloper] = useDeleteDeveloperMutation();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<Developer | null>(null);
+  const [name, setName] = useState('');
+  const [role, setRole] = useState('');
+  const [email, setEmail] = useState('');
+  const [capacity, setCapacity] = useState('40');
+  const [skills, setSkills] = useState('');
+
+  const openCreate = () => {
+    setEditing(null);
+    setName('');
+    setRole('');
+    setEmail('');
+    setCapacity('40');
+    setSkills('');
+    setModalOpen(true);
+  };
+
+  const openEdit = (dev: Developer) => {
+    setEditing(dev);
+    setName(dev.name);
+    setRole(dev.role);
+    setEmail(dev.email ?? '');
+    setCapacity(String(dev.weeklyCapacity));
+    setSkills(dev.skills.join(', '));
+    setModalOpen(true);
+  };
+
+  const saveResource = async () => {
+    const payload = {
+      name: name.trim(),
+      role: role.trim(),
+      email: email.trim(),
+      weekly_capacity: Number(capacity) || 40,
+      skills: skills.split(',').map(s => s.trim()).filter(Boolean),
+    };
+    if (!payload.name || !payload.role || !payload.email) {
+      dispatch(addNotification({ type: 'warning', title: 'Missing resource details', message: 'Name, role, and email are required.' }));
+      return;
+    }
+    if (editing) {
+      await updateDeveloper({ id: editing.id, ...payload }).unwrap();
+      dispatch(addNotification({ type: 'success', title: 'Resource updated', message: `${payload.name} was saved to the database.` }));
+    } else {
+      await createDeveloper(payload).unwrap();
+      dispatch(addNotification({ type: 'success', title: 'Resource added', message: `${payload.name} was inserted into the database.` }));
+    }
+    setModalOpen(false);
+  };
 
   const avgUtilization = Math.round(
     heatmapData.reduce((s, c) => s + c.utilizationPct, 0) /
@@ -61,9 +121,18 @@ export const ResourcesPage: React.FC = () => {
         animate={{ opacity: 1 }}
         transition={{ delay: 0.2 }}
       >
-        <h2 style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 16 }}>
-          Developer Profiles
-        </h2>
+        <div className="flex items-center justify-between" style={{ marginBottom: 16 }}>
+          <h2 style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+            Developer Profiles
+          </h2>
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-2 rounded-lg px-3 py-1.5 cursor-pointer"
+            style={{ fontSize: 12, fontWeight: 700, color: '#000', background: 'var(--color-neon-blue)', border: 'none' }}
+          >
+            <Plus size={13} /> Add Resource
+          </button>
+        </div>
         <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
           {developers.map((dev, i) => {
             const thisWeek = heatmapData.find(c => c.developerId === dev.id && c.weekLabel === 'Wk 1');
@@ -96,6 +165,25 @@ export const ResourcesPage: React.FC = () => {
                     <div style={{ textAlign: 'right' }}>
                       <p style={{ fontSize: 16, fontWeight: 700, color: utilColor }}>{util}%</p>
                       <p style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>this week</p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => openEdit(dev)}
+                        title="Edit resource"
+                        style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid var(--color-border)', background: 'rgba(255,255,255,0.04)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+                      >
+                        <Pencil size={12} />
+                      </button>
+                      <button
+                        onClick={async () => {
+                          await deleteDeveloper(dev.id).unwrap();
+                          dispatch(addNotification({ type: 'success', title: 'Resource deleted', message: `${dev.name} was removed from active resources.` }));
+                        }}
+                        title="Delete resource"
+                        style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid rgba(255,69,58,0.25)', background: 'rgba(255,69,58,0.08)', color: 'var(--color-neon-red)', cursor: 'pointer' }}
+                      >
+                        <Trash2 size={12} />
+                      </button>
                     </div>
                   </div>
 
@@ -136,6 +224,30 @@ export const ResourcesPage: React.FC = () => {
           })}
         </div>
       </motion.div>
+
+      {modalOpen && (
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setModalOpen(false)}
+        >
+          <div className="glass-card rounded-xl" style={{ width: 420, padding: 20 }} onClick={e => e.stopPropagation()}>
+            <h2 style={{ fontSize: 16, marginBottom: 12 }}>{editing ? 'Edit Resource' : 'Add Resource'}</h2>
+            <input autoFocus value={name} onChange={e => setName(e.target.value)} placeholder="Name" style={{ width: '100%', marginBottom: 10 }} />
+            <input value={role} onChange={e => setRole(e.target.value)} placeholder="Role" style={{ width: '100%', marginBottom: 10 }} />
+            <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" style={{ width: '100%', marginBottom: 10 }} />
+            <input type="number" min={1} max={168} value={capacity} onChange={e => setCapacity(e.target.value)} placeholder="Weekly capacity" style={{ width: '100%', marginBottom: 10 }} />
+            <input value={skills} onChange={e => setSkills(e.target.value)} placeholder="Skills, comma separated" style={{ width: '100%', marginBottom: 14 }} />
+            <div className="flex justify-between">
+              <button onClick={() => setModalOpen(false)} className="rounded-lg px-3 py-1.5 cursor-pointer" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}>
+                Cancel
+              </button>
+              <button onClick={saveResource} className="rounded-lg px-3 py-1.5 cursor-pointer" style={{ background: 'var(--color-neon-blue)', border: 'none', color: '#000', fontWeight: 700 }}>
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

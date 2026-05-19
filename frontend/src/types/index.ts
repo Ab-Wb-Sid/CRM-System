@@ -45,8 +45,10 @@ export interface Opportunity {
 
 export interface Developer {
   id: string;
+  userId?: string;
   name: string;
   role: string;
+  email?: string;
   avatar: string;
   skills: string[];
   weeklyCapacity: number; // hours/week

@@ -7,7 +7,7 @@ import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import type { RootState } from '../index';
 import type {
   Opportunity, Developer, Task, DashboardStats,
-  RevenuePoint, HeatmapCell, OpportunityStage,
+  RevenuePoint, HeatmapCell, OpportunityStage, Project,
 } from '../../types';
 
 // ── Auth types ─────────────────────────────────────────
@@ -44,7 +44,17 @@ export interface TaskCreateRequest {
   title: string;
   status?: Task['status'];
   due_date?: string | null;
+  project_id?: number | null;
   opportunity_id?: number | null;
+  assigned_to_developer_id?: number | null;
+}
+
+export interface DeveloperWriteRequest {
+  name: string;
+  role: string;
+  email: string;
+  weekly_capacity: number;
+  skills: string[];
 }
 
 // ── Base URL ───────────────────────────────────────────
@@ -161,9 +171,39 @@ export const crmApi = createApi({
       providesTags: ['Developer'],
     }),
 
+    createDeveloper: builder.mutation<Developer, DeveloperWriteRequest>({
+      query: (body) => ({
+        url: '/crm/developers',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: ['Developer', 'Dashboard'],
+    }),
+
+    updateDeveloper: builder.mutation<Developer, DeveloperWriteRequest & { id: string }>({
+      query: ({ id, ...body }) => ({
+        url: `/crm/developers/${id}`,
+        method: 'PATCH',
+        body,
+      }),
+      invalidatesTags: ['Developer', 'Dashboard', { type: 'Task', id: 'LIST' }],
+    }),
+
+    deleteDeveloper: builder.mutation<void, string>({
+      query: (id) => ({
+        url: `/crm/developers/${id}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['Developer', 'Dashboard'],
+    }),
+
     getHeatmapData: builder.query<HeatmapCell[], void>({
       query: () => '/crm/heatmap?weeks=8',
       providesTags: ['Developer'],
+    }),
+
+    getProjects: builder.query<Project[], void>({
+      query: () => '/crm/projects',
     }),
 
     // ── Tasks / Data Grid ─────────────────────────────
@@ -190,7 +230,12 @@ export const crmApi = createApi({
       ],
     }),
 
-    updateTask: builder.mutation<Task, Partial<Task> & { id: string }>({
+    updateTask: builder.mutation<Task, Partial<Task> & {
+      id: string;
+      due_date?: string | null;
+      project_id?: number | null;
+      assigned_to_developer_id?: number | null;
+    }>({
       query: ({ id, ...patch }) => ({
         url: `/crm/tasks/${id}`,
         method: 'PATCH',
@@ -225,7 +270,11 @@ export const {
   useDeleteOpportunityMutation,
   useMoveOpportunityMutation,
   useGetDevelopersQuery,
+  useCreateDeveloperMutation,
+  useUpdateDeveloperMutation,
+  useDeleteDeveloperMutation,
   useGetHeatmapDataQuery,
+  useGetProjectsQuery,
   useGetTasksQuery,
   useCreateTaskMutation,
   useUpdateTaskMutation,

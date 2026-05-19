@@ -11,6 +11,7 @@ These endpoints power the five Sanestix CRM frontend pages:
 
 from __future__ import annotations
 
+import secrets
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
@@ -19,7 +20,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.security import get_current_user
+from app.core.security import get_current_user, hash_password
 from app.core.exceptions import BadRequestException, NotFoundException
 from app.database import get_db
 from app.modules.accounts.models import Account, Opportunity, OpportunityStage
@@ -52,9 +53,11 @@ class TaskCreate(BaseModel):
     status: str = "Backlog"
     task_type: str = "follow_up"
     due_date: datetime | None = None
+    project_id: int | None = None
     opportunity_id: int | None = None
     lead_id: int | None = None
     assigned_to_id: int | None = None
+    assigned_to_developer_id: int | None = None
 
 
 class TaskUpdate(BaseModel):
@@ -62,7 +65,25 @@ class TaskUpdate(BaseModel):
     description: str | None = None
     status: str | None = None
     due_date: datetime | None = None
+    project_id: int | None = None
     assigned_to_id: int | None = None
+    assigned_to_developer_id: int | None = None
+
+
+class DeveloperCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=150)
+    role: str = Field(min_length=1, max_length=100)
+    email: str = Field(min_length=3, max_length=255)
+    weekly_capacity: float = Field(default=40, gt=0, le=168)
+    skills: list[str] = Field(default_factory=list)
+
+
+class DeveloperUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=150)
+    role: str | None = Field(default=None, min_length=1, max_length=100)
+    email: str | None = Field(default=None, min_length=3, max_length=255)
+    weekly_capacity: float | None = Field(default=None, gt=0, le=168)
+    skills: list[str] | None = None
 
 
 # ── Helper ─────────────────────────────────────────────────────────────────────
@@ -91,12 +112,22 @@ def _opportunity_to_dict(opp: Opportunity, db: Session) -> dict[str, Any]:
     }
 
 
-def _task_to_dict(task: Task) -> dict[str, Any]:
+def _task_to_dict(task: Task, db: Session) -> dict[str, Any]:
     assignee_name = task.assigned_to.full_name if task.assigned_to else ""
+    project: Project | None = None
+    if getattr(task, "project_id", None):
+        project = db.get(Project, task.project_id)
+    if project is None and task.opportunity_id:
+        project = db.scalar(
+            select(Project).where(
+                Project.opportunity_id == task.opportunity_id,
+                Project.is_deleted == False,  # noqa: E712
+            )
+        )
     return {
         "id": str(task.id),
-        "projectId": str(task.opportunity_id or ""),
-        "projectName": "",
+        "projectId": str(project.id if project else ""),
+        "projectName": project.name if project else "",
         "title": task.title,
         "assigneeId": str(task.assigned_to_id),
         "assigneeName": assignee_name,
@@ -108,6 +139,88 @@ def _task_to_dict(task: Task) -> dict[str, Any]:
         "sprint": "",
         "techStack": [],
         "createdAt": task.created_at.isoformat() if task.created_at else "",
+    }
+
+
+def _developer_to_dict(dev: Developer) -> dict[str, Any]:
+    allocations = [
+        {
+            "projectId": str(a.project_id),
+            "projectName": a.project.name if a.project else "",
+            "weekStart": a.week_start.isoformat(),
+            "hoursAllocated": a.hours_allocated,
+        }
+        for a in dev.allocations
+    ]
+    return {
+        "id": str(dev.id),
+        "userId": str(dev.user_id or ""),
+        "name": dev.name,
+        "role": dev.role,
+        "email": dev.email,
+        "avatar": dev.avatar_initials,
+        "skills": dev.skills or [],
+        "weeklyCapacity": dev.weekly_capacity,
+        "allocations": allocations,
+    }
+
+
+def _initials(name: str) -> str:
+    return "".join(part[0] for part in name.split() if part).upper()[:3] or "DEV"
+
+
+def _split_name(name: str) -> tuple[str, str]:
+    parts = name.strip().split()
+    if not parts:
+        return "Resource", "User"
+    if len(parts) == 1:
+        return parts[0], "Resource"
+    return parts[0], " ".join(parts[1:])
+
+
+def _ensure_developer_user(dev: Developer, db: Session) -> int:
+    if dev.user_id and db.get(User, dev.user_id):
+        return dev.user_id
+
+    user = db.scalar(select(User).where(User.email == dev.email, User.is_deleted == False))  # noqa: E712
+    if user is None:
+        first_name, last_name = _split_name(dev.name)
+        user = User(
+            first_name=first_name,
+            last_name=last_name,
+            email=dev.email,
+            hashed_password=hash_password(secrets.token_urlsafe(24)),
+            role="dev",
+            is_active=True,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            is_deleted=False,
+        )
+        db.add(user)
+        db.flush()
+
+    dev.user_id = user.id
+    dev.updated_at = datetime.now(timezone.utc)
+    db.flush()
+    return user.id
+
+
+def _project_to_dict(project: Project) -> dict[str, Any]:
+    return {
+        "id": str(project.id),
+        "clientId": str(project.account_id or ""),
+        "clientName": "",
+        "opportunityId": str(project.opportunity_id or ""),
+        "name": project.name,
+        "status": project.status,
+        "startDate": project.start_date.isoformat() if project.start_date else "",
+        "endDate": project.end_date.isoformat() if project.end_date else "",
+        "budget": float(project.budget or 0),
+        "burnedHours": float(project.burned_hours or 0),
+        "estimatedHours": float(project.estimated_hours or 0),
+        "velocityActual": project.velocity_actual or 0,
+        "velocityEstimated": project.velocity_estimated or 0,
+        "techStack": project.tech_stack or [],
     }
 
 
@@ -495,6 +608,121 @@ def get_developers(
     return result
 
 
+@router.post(
+    "/developers",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a resource/developer from the UI",
+)
+def create_developer(
+    payload: DeveloperCreate,
+    db: Session = Depends(get_db),
+    _user: User = Depends(_require_auth),
+) -> dict[str, Any]:
+    existing = db.scalar(
+        select(Developer).where(
+            Developer.email == payload.email,
+            Developer.is_deleted == False,  # noqa: E712
+        )
+    )
+    if existing:
+        raise BadRequestException("A resource with this email already exists.")
+
+    dev = Developer(
+        name=payload.name,
+        role=payload.role,
+        email=payload.email,
+        avatar_initials=_initials(payload.name),
+        accent_color="#6366f1",
+        weekly_capacity=payload.weekly_capacity,
+        skills=payload.skills,
+        is_active=True,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        is_deleted=False,
+    )
+    db.add(dev)
+    db.flush()
+    _ensure_developer_user(dev, db)
+    db.commit()
+    db.refresh(dev)
+    return _developer_to_dict(dev)
+
+
+@router.patch(
+    "/developers/{developer_id}",
+    summary="Update a resource/developer from the UI",
+)
+def update_developer(
+    developer_id: int,
+    payload: DeveloperUpdate,
+    db: Session = Depends(get_db),
+    _user: User = Depends(_require_auth),
+) -> dict[str, Any]:
+    dev: Developer | None = db.get(Developer, developer_id)
+    if not dev or dev.is_deleted:
+        raise NotFoundException(f"Developer {developer_id} not found.")
+
+    if payload.name is not None:
+        dev.name = payload.name
+        dev.avatar_initials = _initials(payload.name)
+    if payload.role is not None:
+        dev.role = payload.role
+    if payload.email is not None:
+        dev.email = payload.email
+    if payload.weekly_capacity is not None:
+        dev.weekly_capacity = payload.weekly_capacity
+    if payload.skills is not None:
+        dev.skills = payload.skills
+
+    dev.updated_at = datetime.now(timezone.utc)
+    user_id = _ensure_developer_user(dev, db)
+    linked_user = db.get(User, user_id)
+    if linked_user:
+        first_name, last_name = _split_name(dev.name)
+        linked_user.first_name = first_name
+        linked_user.last_name = last_name
+        linked_user.email = dev.email
+        linked_user.updated_at = datetime.now(timezone.utc)
+
+    db.commit()
+    db.refresh(dev)
+    return _developer_to_dict(dev)
+
+
+@router.delete(
+    "/developers/{developer_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Soft-delete a resource/developer from the UI",
+)
+def delete_developer(
+    developer_id: int,
+    db: Session = Depends(get_db),
+    _user: User = Depends(_require_auth),
+) -> None:
+    dev: Developer | None = db.get(Developer, developer_id)
+    if not dev or dev.is_deleted:
+        raise NotFoundException(f"Developer {developer_id} not found.")
+    dev.is_deleted = True
+    dev.is_active = False
+    dev.deleted_at = datetime.now(timezone.utc)
+    dev.updated_at = datetime.now(timezone.utc)
+    db.commit()
+
+
+@router.get(
+    "/projects",
+    summary="List projects for task assignment",
+)
+def get_projects(
+    db: Session = Depends(get_db),
+    _user: User = Depends(_require_auth),
+) -> list[dict[str, Any]]:
+    projects = db.scalars(
+        select(Project).where(Project.is_deleted == False).order_by(Project.name)  # noqa: E712
+    ).all()
+    return [_project_to_dict(project) for project in projects]
+
+
 @router.get(
     "/heatmap",
     summary="Resource Heatmap — weekly utilisation per developer",
@@ -579,7 +807,7 @@ def get_tasks(
     q = q.order_by(Task.created_at.desc()).offset(skip).limit(limit)
 
     tasks = db.scalars(q).all()
-    return [_task_to_dict(t) for t in tasks]
+    return [_task_to_dict(t, db) for t in tasks]
     result = []
     for t in tasks:
         assignee_name = ""
@@ -639,7 +867,21 @@ def create_task(
     if payload.lead_id is not None and payload.opportunity_id is not None:
         raise BadRequestException("A task can be linked to a lead or opportunity, not both.")
 
+    opportunity_id = payload.opportunity_id
+    project_id = payload.project_id
+    if payload.project_id is not None:
+        project = db.get(Project, payload.project_id)
+        if not project or project.is_deleted:
+            raise BadRequestException("Project does not exist.")
+        opportunity_id = project.opportunity_id or opportunity_id
+
     assignee_id = payload.assigned_to_id or current_user.id
+    if payload.assigned_to_developer_id is not None:
+        developer = db.get(Developer, payload.assigned_to_developer_id)
+        if not developer or developer.is_deleted:
+            raise BadRequestException("Assigned resource does not exist.")
+        assignee_id = _ensure_developer_user(developer, db)
+
     if not db.get(User, assignee_id):
         raise BadRequestException("Assigned user does not exist.")
 
@@ -650,7 +892,8 @@ def create_task(
         status=_reverse_map_task_status(payload.status),
         due_date=payload.due_date,
         lead_id=payload.lead_id,
-        opportunity_id=payload.opportunity_id,
+        opportunity_id=opportunity_id,
+        project_id=project_id,
         assigned_to_id=assignee_id,
         created_by_id=current_user.id,
         created_at=datetime.now(timezone.utc),
@@ -660,7 +903,7 @@ def create_task(
     db.add(task)
     db.commit()
     db.refresh(task)
-    return _task_to_dict(task)
+    return _task_to_dict(task, db)
 
 
 @router.patch(
@@ -685,6 +928,18 @@ def update_task(
         task.description = body.description
     if body.due_date is not None:
         task.due_date = body.due_date
+    if body.project_id is not None:
+        project = db.get(Project, body.project_id)
+        if not project or project.is_deleted:
+            raise BadRequestException("Project does not exist.")
+        task.project_id = body.project_id
+        task.opportunity_id = project.opportunity_id or task.opportunity_id
+        task.lead_id = None
+    if body.assigned_to_developer_id is not None:
+        developer = db.get(Developer, body.assigned_to_developer_id)
+        if not developer or developer.is_deleted:
+            raise BadRequestException("Assigned resource does not exist.")
+        task.assigned_to_id = _ensure_developer_user(developer, db)
     if body.assigned_to_id is not None:
         if not db.get(User, body.assigned_to_id):
             raise BadRequestException("Assigned user does not exist.")
@@ -694,7 +949,7 @@ def update_task(
     db.commit()
     db.refresh(task)
 
-    return _task_to_dict(task)
+    return _task_to_dict(task, db)
 
 
 @router.delete(

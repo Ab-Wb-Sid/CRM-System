@@ -52,6 +52,9 @@ class Task(Base, TimestampMixin, SoftDeleteMixin):
     opportunity_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("opportunities.id", ondelete="SET NULL"), nullable=True
     )
+    project_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
+    )
 
     assigned_to_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="NO ACTION"), nullable=False

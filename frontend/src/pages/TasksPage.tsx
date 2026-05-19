@@ -7,7 +7,12 @@ import { Plus } from 'lucide-react';
 import { TaskGrid } from '../components/datagrid/TaskGrid';
 import { GlassCard } from '../components/ui/GlassCard';
 import { NeonBadge } from '../components/ui/NeonBadge';
-import { useCreateTaskMutation, useGetTasksQuery } from '../store/api/crmApi';
+import {
+  useCreateTaskMutation,
+  useGetDevelopersQuery,
+  useGetProjectsQuery,
+  useGetTasksQuery,
+} from '../store/api/crmApi';
 import { useAppDispatch } from '../store';
 import { addNotification } from '../store/slices/uiSlice';
 import type { TaskStatus } from '../types';
@@ -17,10 +22,15 @@ const STATUS_LIST: TaskStatus[] = ['Backlog', 'In Progress', 'In Review', 'Done'
 export const TasksPage: React.FC = () => {
   const dispatch = useAppDispatch();
   const { data: tasks = [] } = useGetTasksQuery();
+  const { data: developers = [] } = useGetDevelopersQuery();
+  const { data: projects = [] } = useGetProjectsQuery();
   const [createTask] = useCreateTaskMutation();
   const [newTaskOpen, setNewTaskOpen] = useState(false);
   const [taskTitle, setTaskTitle] = useState('');
   const [taskStatus, setTaskStatus] = useState<TaskStatus>('Backlog');
+  const [taskDueDate, setTaskDueDate] = useState('');
+  const [taskProjectId, setTaskProjectId] = useState('');
+  const [taskDeveloperId, setTaskDeveloperId] = useState('');
 
   const statusCounts = STATUS_LIST.reduce((acc, s) => {
     acc[s] = tasks.filter(t => t.status === s).length;
@@ -29,7 +39,7 @@ export const TasksPage: React.FC = () => {
 
   const totalPoints = tasks.reduce((s, t) => s + t.storyPoints, 0);
   const donePoints = tasks.filter(t => t.status === 'Done').reduce((s, t) => s + t.storyPoints, 0);
-  const velocity = Math.round((donePoints / totalPoints) * 100);
+  const velocity = totalPoints > 0 ? Math.round((donePoints / totalPoints) * 100) : 0;
 
   return (
     <div style={{ padding: '24px 28px' }}>
@@ -59,6 +69,9 @@ export const TasksPage: React.FC = () => {
             onClick={() => {
               setTaskTitle('');
               setTaskStatus('Backlog');
+              setTaskDueDate('');
+              setTaskProjectId('');
+              setTaskDeveloperId('');
               setNewTaskOpen(true);
             }}
             className="flex items-center gap-2 rounded-lg px-4 py-2 cursor-pointer font-semibold"
@@ -109,6 +122,32 @@ export const TasksPage: React.FC = () => {
                 <option key={status} value={status}>{status}</option>
               ))}
             </select>
+            <select
+              value={taskProjectId}
+              onChange={e => setTaskProjectId(e.target.value)}
+              style={{ width: '100%', marginBottom: 12 }}
+            >
+              <option value="">Select project</option>
+              {projects.map(project => (
+                <option key={project.id} value={project.id}>{project.name}</option>
+              ))}
+            </select>
+            <select
+              value={taskDeveloperId}
+              onChange={e => setTaskDeveloperId(e.target.value)}
+              style={{ width: '100%', marginBottom: 12 }}
+            >
+              <option value="">Assign resource</option>
+              {developers.map(dev => (
+                <option key={dev.id} value={dev.id}>{dev.name}</option>
+              ))}
+            </select>
+            <input
+              type="date"
+              value={taskDueDate}
+              onChange={e => setTaskDueDate(e.target.value)}
+              style={{ width: '100%', marginBottom: 12 }}
+            />
             <div className="flex justify-between">
               <button
                 onClick={() => setNewTaskOpen(false)}
@@ -127,7 +166,13 @@ export const TasksPage: React.FC = () => {
                     }));
                     return;
                   }
-                  await createTask({ title: taskTitle.trim(), status: taskStatus }).unwrap();
+                  await createTask({
+                    title: taskTitle.trim(),
+                    status: taskStatus,
+                    due_date: taskDueDate ? new Date(`${taskDueDate}T12:00:00`).toISOString() : null,
+                    project_id: taskProjectId ? Number(taskProjectId) : null,
+                    assigned_to_developer_id: taskDeveloperId ? Number(taskDeveloperId) : null,
+                  }).unwrap();
                   dispatch(addNotification({
                     type: 'success',
                     title: 'Task created',
