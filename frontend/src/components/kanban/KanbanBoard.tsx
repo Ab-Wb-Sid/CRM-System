@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════
 //  KanbanBoard — DnD Context + Column Orchestration
 // ═══════════════════════════════════════════════════════
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import {
   DndContext, DragOverlay,
   MouseSensor, TouchSensor,
@@ -11,7 +11,7 @@ import {
 import { KanbanColumn } from './KanbanColumn';
 import { KanbanCard } from './KanbanCard';
 import { useAppDispatch, useAppSelector } from '../../store';
-import { moveCard } from '../../store/slices/kanbanSlice';
+import { moveCard, syncFromServer } from '../../store/slices/kanbanSlice';
 import { useMoveOpportunityMutation, useGetOpportunitiesQuery } from '../../store/api/crmApi';
 import type { Opportunity, OpportunityStage } from '../../types';
 import { useState } from 'react';
@@ -20,7 +20,17 @@ const STAGES: OpportunityStage[] = [
   'Lead', 'Qualified', 'Proposal', 'Negotiation', 'Closed Won', 'Closed Lost',
 ];
 
-export const KanbanBoard: React.FC = () => {
+interface KanbanBoardProps {
+  activeOnly?: boolean;
+  onEditOpportunity?: (opportunity: Opportunity) => void;
+  onDeleteOpportunity?: (opportunity: Opportunity) => void;
+}
+
+export const KanbanBoard: React.FC<KanbanBoardProps> = ({
+  activeOnly = false,
+  onEditOpportunity,
+  onDeleteOpportunity,
+}) => {
   const dispatch = useAppDispatch();
   const columns = useAppSelector(s => s.kanban.columns);
   const { data: opportunities = [] } = useGetOpportunitiesQuery();
@@ -31,6 +41,15 @@ export const KanbanBoard: React.FC = () => {
     () => Object.fromEntries(opportunities.map(o => [o.id, o])),
     [opportunities],
   );
+
+  useEffect(() => {
+    const nextColumns = {} as Record<OpportunityStage, string[]>;
+    for (const stage of STAGES) nextColumns[stage] = [];
+    for (const opp of opportunities) {
+      nextColumns[opp.stage].push(opp.id);
+    }
+    dispatch(syncFromServer(nextColumns));
+  }, [dispatch, opportunities]);
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
@@ -99,13 +118,16 @@ export const KanbanBoard: React.FC = () => {
         {STAGES.map(stage => {
           const stageOpps = columns[stage]
             .map(id => oppMap[id])
-            .filter(Boolean) as Opportunity[];
+            .filter((opp): opp is Opportunity => Boolean(opp))
+            .filter(opp => !activeOnly || !['Closed Won', 'Closed Lost'].includes(opp.stage));
 
           return (
             <KanbanColumn
               key={stage}
               stage={stage}
               opportunities={stageOpps}
+              onEditOpportunity={onEditOpportunity}
+              onDeleteOpportunity={onDeleteOpportunity}
             />
           );
         })}

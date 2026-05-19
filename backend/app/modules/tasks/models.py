@@ -30,6 +30,7 @@ class TaskStatus(StrEnum):
 class Task(Base, TimestampMixin, SoftDeleteMixin):
     """Represents a scheduled or logged CRM activity (call, email, meeting)."""
     __tablename__ = "tasks"
+    __table_args__ = {"implicit_returning": False}
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)

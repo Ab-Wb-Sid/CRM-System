@@ -10,6 +10,8 @@ import type { Opportunity, OpportunityStage } from '../../types';
 interface KanbanColumnProps {
   stage: OpportunityStage;
   opportunities: Opportunity[];
+  onEditOpportunity?: (opportunity: Opportunity) => void;
+  onDeleteOpportunity?: (opportunity: Opportunity) => void;
 }
 
 const STAGE_META: Record<OpportunityStage, { color: string; accent: string }> = {
@@ -28,7 +30,12 @@ function totalValue(opps: Opportunity[]) {
     : `$${(total / 1_000).toFixed(0)}K`;
 }
 
-export const KanbanColumn: React.FC<KanbanColumnProps> = ({ stage, opportunities }) => {
+export const KanbanColumn: React.FC<KanbanColumnProps> = ({
+  stage,
+  opportunities,
+  onEditOpportunity,
+  onDeleteOpportunity,
+}) => {
   const { setNodeRef, isOver } = useDroppable({ id: stage });
   const meta = STAGE_META[stage];
 
@@ -101,7 +108,12 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({ stage, opportunities
           strategy={verticalListSortingStrategy}
         >
           {opportunities.map(opp => (
-            <KanbanCard key={opp.id} opportunity={opp} />
+            <KanbanCard
+              key={opp.id}
+              opportunity={opp}
+              onEdit={onEditOpportunity}
+              onDelete={onDeleteOpportunity}
+            />
           ))}
         </SortableContext>
 

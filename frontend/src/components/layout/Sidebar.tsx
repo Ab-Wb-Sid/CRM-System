@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════
 //  Sidebar — Collapsible Glassmorphic Navigation
 // ═══════════════════════════════════════════════════════
-import React from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, GitBranch, Users, CheckSquare,
@@ -32,6 +32,7 @@ export const Sidebar: React.FC = () => {
   const dispatch = useAppDispatch();
   const collapsed = useAppSelector(s => s.ui.sidebarCollapsed);
   const activeView = useAppSelector(s => s.ui.activeView);
+  const [modal, setModal] = useState<'settings' | 'help' | null>(null);
 
   return (
     <motion.aside
@@ -96,6 +97,7 @@ export const Sidebar: React.FC = () => {
           <button
             key={label}
             title={label}
+            onClick={label === 'Settings' ? () => setModal('settings') : () => setModal('help')}
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 cursor-pointer"
             style={{ color: 'var(--color-text-muted)', background: 'transparent', border: 'none', width: '100%' }}
             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-secondary)'; }}
@@ -134,6 +136,47 @@ export const Sidebar: React.FC = () => {
       >
         {collapsed ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
       </button>
+
+      <AnimatePresence>
+        {modal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 200,
+              background: 'rgba(0,0,0,0.45)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+            onClick={() => setModal(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.96, y: 10 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.96, y: 10 }}
+              className="glass-card rounded-xl"
+              style={{ width: 360, padding: 20 }}
+              onClick={e => e.stopPropagation()}
+            >
+              <h2 style={{ fontSize: 16, marginBottom: 8 }}>
+                {modal === 'settings' ? 'Settings' : 'Help'}
+              </h2>
+              <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.5, marginBottom: 16 }}>
+                {modal === 'settings'
+                  ? 'Workspace settings will appear here when the settings API is added.'
+                  : 'Use the sidebar to switch pages, the top search to filter context, and drag pipeline cards between stages.'}
+              </p>
+              <button
+                onClick={() => setModal(null)}
+                className="rounded-lg px-3 py-1.5 cursor-pointer"
+                style={{ background: 'var(--color-neon-blue)', border: 'none', color: '#000', fontWeight: 700 }}
+              >
+                Close
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.aside>
   );
 };

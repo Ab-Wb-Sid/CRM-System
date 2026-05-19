@@ -38,12 +38,20 @@ const uiSlice = createSlice({
     markAllRead(state) {
       state.notifications.forEach(n => { n.read = true; });
     },
+    addNotification(state, action: PayloadAction<Omit<UiState['notifications'][number], 'id' | 'timestamp' | 'read'>>) {
+      state.notifications.unshift({
+        ...action.payload,
+        id: `n-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        read: false,
+      });
+    },
   },
 });
 
 export const {
   toggleSidebar, setSidebarCollapsed, setActiveView,
-  setGlobalSearch, markNotificationRead, markAllRead,
+  setGlobalSearch, markNotificationRead, markAllRead, addNotification,
 } = uiSlice.actions;
 
 export default uiSlice.reducer;

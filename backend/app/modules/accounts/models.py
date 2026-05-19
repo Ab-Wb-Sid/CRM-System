@@ -42,6 +42,7 @@ class Account(Base, TimestampMixin, SoftDeleteMixin):
 class Opportunity(Base, TimestampMixin, SoftDeleteMixin):
     """A deal being tracked through the sales pipeline."""
     __tablename__ = "opportunities"
+    __table_args__ = {"implicit_returning": False}
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)

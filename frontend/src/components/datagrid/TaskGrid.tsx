@@ -9,10 +9,10 @@ import {
   type ColumnDef, type SortingState, type ColumnFiltersState,
 } from '@tanstack/react-table';
 import { motion } from 'framer-motion';
-import { ArrowUpDown, ArrowUp, ArrowDown, Search } from 'lucide-react';
+import { ArrowUpDown, ArrowUp, ArrowDown, Search, Trash2 } from 'lucide-react';
 import { NeonBadge } from '../ui/NeonBadge';
 import { InlineEditCell } from './InlineEditCell';
-import { useGetTasksQuery, useUpdateTaskMutation } from '../../store/api/crmApi';
+import { useDeleteTaskMutation, useGetTasksQuery, useUpdateTaskMutation } from '../../store/api/crmApi';
 import type { Task, TaskStatus, TaskPriority } from '../../types';
 
 const PRIORITY_ORDER: Record<TaskPriority, number> = { Critical: 0, High: 1, Medium: 2, Low: 3 };
@@ -20,6 +20,7 @@ const PRIORITY_ORDER: Record<TaskPriority, number> = { Critical: 0, High: 1, Med
 export const TaskGrid: React.FC = () => {
   const { data: tasks = [], isLoading } = useGetTasksQuery();
   const [updateTask] = useUpdateTaskMutation();
+  const [deleteTask] = useDeleteTaskMutation();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -176,7 +177,28 @@ export const TaskGrid: React.FC = () => {
         <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>{getValue() as string}</span>
       ),
     },
-  ], [handleCellEdit]);
+    {
+      id: 'actions',
+      header: '',
+      size: 42,
+      cell: ({ row }) => (
+        <button
+          type="button"
+          onClick={() => deleteTask(row.original.id)}
+          title="Delete task"
+          style={{
+            width: 26, height: 26, borderRadius: 6,
+            background: 'rgba(255,69,58,0.08)',
+            border: '1px solid rgba(255,69,58,0.25)',
+            color: 'var(--color-neon-red)',
+            cursor: 'pointer',
+          }}
+        >
+          <Trash2 size={12} />
+        </button>
+      ),
+    },
+  ], [deleteTask, handleCellEdit]);
 
   const table = useReactTable({
     data: tasks,

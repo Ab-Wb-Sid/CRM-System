@@ -14,11 +14,13 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user
+from app.core.exceptions import BadRequestException, NotFoundException
 from app.database import get_db
 from app.modules.accounts.models import Account, Opportunity, OpportunityStage
 from app.modules.crm.models import Developer, DeveloperAllocation, Project, RevenuePoint
@@ -28,11 +30,85 @@ from app.modules.users.models import User
 router = APIRouter(tags=["CRM"])
 
 
+class OpportunityCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    client_name: str = Field(min_length=1, max_length=255)
+    expected_value: float = Field(default=0, ge=0)
+    probability: int = Field(default=25, ge=0, le=100)
+    stage: str = "Lead"
+
+
+class OpportunityUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    client_name: str | None = Field(default=None, min_length=1, max_length=255)
+    expected_value: float | None = Field(default=None, ge=0)
+    probability: int | None = Field(default=None, ge=0, le=100)
+    stage: str | None = None
+
+
+class TaskCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+    status: str = "Backlog"
+    task_type: str = "follow_up"
+    due_date: datetime | None = None
+    opportunity_id: int | None = None
+    lead_id: int | None = None
+    assigned_to_id: int | None = None
+
+
+class TaskUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = None
+    status: str | None = None
+    due_date: datetime | None = None
+    assigned_to_id: int | None = None
+
+
 # ── Helper ─────────────────────────────────────────────────────────────────────
 
 def _require_auth(current_user: User = Depends(get_current_user)) -> User:
     """Convenience shorthand used in every endpoint."""
     return current_user
+
+
+def _opportunity_to_dict(opp: Opportunity, db: Session) -> dict[str, Any]:
+    account: Account | None = db.get(Account, opp.account_id)
+    return {
+        "id": str(opp.id),
+        "clientId": str(opp.account_id),
+        "clientName": account.company_name if account else "Unknown",
+        "title": opp.name,
+        "dealType": "Fixed-Cost",
+        "stage": _map_stage(opp.stage),
+        "expectedValue": float(opp.deal_value or 0),
+        "probability": opp.probability or 0,
+        "assignedPM": "Unassigned",
+        "pmAvatar": "",
+        "techStack": [],
+        "estimatedCloseDate": "",
+        "lastActivityDate": opp.updated_at.isoformat() if opp.updated_at else "",
+    }
+
+
+def _task_to_dict(task: Task) -> dict[str, Any]:
+    assignee_name = task.assigned_to.full_name if task.assigned_to else ""
+    return {
+        "id": str(task.id),
+        "projectId": str(task.opportunity_id or ""),
+        "projectName": "",
+        "title": task.title,
+        "assigneeId": str(task.assigned_to_id),
+        "assigneeName": assignee_name,
+        "status": _map_task_status(task.status),
+        "priority": "Medium",
+        "storyPoints": 0,
+        "dueDate": task.due_date.isoformat() if task.due_date else "",
+        "epic": "",
+        "sprint": "",
+        "techStack": [],
+        "createdAt": task.created_at.isoformat() if task.created_at else "",
+    }
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -197,6 +273,7 @@ def get_opportunities(
     q = q.order_by(Opportunity.created_at.desc()).offset(skip).limit(limit)
 
     opps = db.scalars(q).all()
+    return [_opportunity_to_dict(opp, db) for opp in opps]
     result = []
     for opp in opps:
         account: Account | None = db.get(Account, opp.account_id)
@@ -241,6 +318,116 @@ def _reverse_map_stage(ui_stage: str) -> str:
         "Closed Lost": "closed_lost",
     }
     return mapping.get(ui_stage, "discovery")
+
+
+@router.post(
+    "/opportunities",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create an opportunity from the UI",
+)
+def create_opportunity(
+    payload: OpportunityCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(_require_auth),
+) -> dict[str, Any]:
+    account = db.scalar(
+        select(Account).where(
+            Account.company_name == payload.client_name,
+            Account.is_deleted == False,  # noqa: E712
+        )
+    )
+    if account is None:
+        account = Account(
+            company_name=payload.client_name,
+            owner_id=current_user.id,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            is_deleted=False,
+        )
+        db.add(account)
+        db.flush()
+
+    opp = Opportunity(
+        name=payload.title,
+        stage=_reverse_map_stage(payload.stage),
+        deal_value=payload.expected_value,
+        probability=payload.probability,
+        account_id=account.id,
+        owner_id=current_user.id,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        is_deleted=False,
+    )
+    db.add(opp)
+    db.commit()
+    db.refresh(opp)
+    return _opportunity_to_dict(opp, db)
+
+
+@router.patch(
+    "/opportunities/{opportunity_id}",
+    summary="Update opportunity details from the UI",
+)
+def update_opportunity(
+    opportunity_id: int,
+    payload: OpportunityUpdate,
+    db: Session = Depends(get_db),
+    _user: User = Depends(_require_auth),
+) -> dict[str, Any]:
+    opp: Opportunity | None = db.get(Opportunity, opportunity_id)
+    if not opp or opp.is_deleted:
+        raise NotFoundException(f"Opportunity {opportunity_id} not found.")
+
+    if payload.title is not None:
+        opp.name = payload.title
+    if payload.expected_value is not None:
+        opp.deal_value = payload.expected_value
+    if payload.probability is not None:
+        opp.probability = payload.probability
+    if payload.stage is not None:
+        opp.stage = _reverse_map_stage(payload.stage)
+    if payload.client_name is not None:
+        account = db.scalar(
+            select(Account).where(
+                Account.company_name == payload.client_name,
+                Account.is_deleted == False,  # noqa: E712
+            )
+        )
+        if account is None:
+            account = Account(
+                company_name=payload.client_name,
+                owner_id=opp.owner_id,
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+                is_deleted=False,
+            )
+            db.add(account)
+            db.flush()
+        opp.account_id = account.id
+
+    opp.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(opp)
+    return _opportunity_to_dict(opp, db)
+
+
+@router.delete(
+    "/opportunities/{opportunity_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Soft-delete an opportunity from the UI",
+)
+def delete_opportunity(
+    opportunity_id: int,
+    db: Session = Depends(get_db),
+    _user: User = Depends(_require_auth),
+) -> None:
+    opp: Opportunity | None = db.get(Opportunity, opportunity_id)
+    if not opp or opp.is_deleted:
+        raise NotFoundException(f"Opportunity {opportunity_id} not found.")
+    opp.is_deleted = True
+    opp.deleted_at = datetime.now(timezone.utc)
+    opp.updated_at = datetime.now(timezone.utc)
+    db.commit()
 
 
 @router.patch(
@@ -392,6 +579,7 @@ def get_tasks(
     q = q.order_by(Task.created_at.desc()).offset(skip).limit(limit)
 
     tasks = db.scalars(q).all()
+    return [_task_to_dict(t) for t in tasks]
     result = []
     for t in tasks:
         assignee_name = ""
@@ -427,37 +615,102 @@ def _map_task_status(db_status: str) -> str:
     return mapping.get(db_status, "Backlog")
 
 
+def _reverse_map_task_status(ui_status: str) -> str:
+    mapping = {
+        "Backlog": "pending",
+        "In Progress": "in_progress",
+        "In Review": "in_progress",
+        "Done": "completed",
+        "Blocked": "cancelled",
+    }
+    return mapping.get(ui_status, "pending")
+
+
+@router.post(
+    "/tasks",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a task from the UI",
+)
+def create_task(
+    payload: TaskCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(_require_auth),
+) -> dict[str, Any]:
+    if payload.lead_id is not None and payload.opportunity_id is not None:
+        raise BadRequestException("A task can be linked to a lead or opportunity, not both.")
+
+    assignee_id = payload.assigned_to_id or current_user.id
+    if not db.get(User, assignee_id):
+        raise BadRequestException("Assigned user does not exist.")
+
+    task = Task(
+        title=payload.title,
+        description=payload.description,
+        task_type=payload.task_type,
+        status=_reverse_map_task_status(payload.status),
+        due_date=payload.due_date,
+        lead_id=payload.lead_id,
+        opportunity_id=payload.opportunity_id,
+        assigned_to_id=assignee_id,
+        created_by_id=current_user.id,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        is_deleted=False,
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return _task_to_dict(task)
+
+
 @router.patch(
     "/tasks/{task_id}",
     summary="Update task status or other fields",
 )
 def update_task(
     task_id: int,
-    body: dict[str, Any],
+    body: TaskUpdate,
     db: Session = Depends(get_db),
     _user: User = Depends(_require_auth),
 ) -> dict[str, Any]:
     task: Task | None = db.get(Task, task_id)
     if not task or task.is_deleted:
-        from app.core.exceptions import NotFoundException
         raise NotFoundException(f"Task {task_id} not found.")
 
-    # Map frontend status label back to DB slug
-    if "status" in body:
-        reverse_status = {
-            "Backlog":     "pending",
-            "In Progress": "in_progress",
-            "In Review":   "in_progress",
-            "Done":        "completed",
-            "Blocked":     "cancelled",
-        }
-        task.status = reverse_status.get(body["status"], task.status)
-
-    if "title" in body:
-        task.title = body["title"]
+    if body.status is not None:
+        task.status = _reverse_map_task_status(body.status)
+    if body.title is not None:
+        task.title = body.title
+    if body.description is not None:
+        task.description = body.description
+    if body.due_date is not None:
+        task.due_date = body.due_date
+    if body.assigned_to_id is not None:
+        if not db.get(User, body.assigned_to_id):
+            raise BadRequestException("Assigned user does not exist.")
+        task.assigned_to_id = body.assigned_to_id
 
     task.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(task)
 
-    return {"id": str(task.id), "status": _map_task_status(task.status)}
+    return _task_to_dict(task)
+
+
+@router.delete(
+    "/tasks/{task_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Soft-delete a task from the UI",
+)
+def delete_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    _user: User = Depends(_require_auth),
+) -> None:
+    task: Task | None = db.get(Task, task_id)
+    if not task or task.is_deleted:
+        raise NotFoundException(f"Task {task_id} not found.")
+    task.is_deleted = True
+    task.deleted_at = datetime.now(timezone.utc)
+    task.updated_at = datetime.now(timezone.utc)
+    db.commit()

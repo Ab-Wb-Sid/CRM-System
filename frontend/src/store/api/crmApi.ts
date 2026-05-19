@@ -23,8 +23,32 @@ export interface TokenResponse {
   expires_in: number;
 }
 
+export interface OpportunityCreateRequest {
+  title: string;
+  client_name: string;
+  expected_value: number;
+  probability: number;
+  stage?: OpportunityStage;
+}
+
+export interface OpportunityUpdateRequest {
+  id: string;
+  title?: string;
+  client_name?: string;
+  expected_value?: number;
+  probability?: number;
+  stage?: OpportunityStage;
+}
+
+export interface TaskCreateRequest {
+  title: string;
+  status?: Task['status'];
+  due_date?: string | null;
+  opportunity_id?: number | null;
+}
+
 // ── Base URL ───────────────────────────────────────────
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8001/api/v1';
+const API_BASE = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000/api/v1';
 
 export const crmApi = createApi({
   reducerPath: 'crmApi',
@@ -83,6 +107,42 @@ export const crmApi = createApi({
           : [{ type: 'Opportunity', id: 'LIST' }],
     }),
 
+    createOpportunity: builder.mutation<Opportunity, OpportunityCreateRequest>({
+      query: (body) => ({
+        url: '/crm/opportunities',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: [
+        { type: 'Opportunity', id: 'LIST' },
+        'Dashboard',
+      ],
+    }),
+
+    updateOpportunity: builder.mutation<Opportunity, OpportunityUpdateRequest>({
+      query: ({ id, ...body }) => ({
+        url: `/crm/opportunities/${id}`,
+        method: 'PATCH',
+        body,
+      }),
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'Opportunity', id },
+        { type: 'Opportunity', id: 'LIST' },
+        'Dashboard',
+      ],
+    }),
+
+    deleteOpportunity: builder.mutation<void, string>({
+      query: (id) => ({
+        url: `/crm/opportunities/${id}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: [
+        { type: 'Opportunity', id: 'LIST' },
+        'Dashboard',
+      ],
+    }),
+
     moveOpportunity: builder.mutation<{ id: string; stage: string }, { id: string; stage: OpportunityStage }>({
       query: ({ id, stage }) => ({
         url: `/crm/opportunities/${id}/stage`,
@@ -118,7 +178,19 @@ export const crmApi = createApi({
           : [{ type: 'Task', id: 'LIST' }],
     }),
 
-    updateTask: builder.mutation<{ id: string; status: string }, Partial<Task> & { id: string }>({
+    createTask: builder.mutation<Task, TaskCreateRequest>({
+      query: (body) => ({
+        url: '/crm/tasks',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: [
+        { type: 'Task', id: 'LIST' },
+        'Dashboard',
+      ],
+    }),
+
+    updateTask: builder.mutation<Task, Partial<Task> & { id: string }>({
       query: ({ id, ...patch }) => ({
         url: `/crm/tasks/${id}`,
         method: 'PATCH',
@@ -129,6 +201,17 @@ export const crmApi = createApi({
         { type: 'Task', id: 'LIST' },
       ],
     }),
+
+    deleteTask: builder.mutation<void, string>({
+      query: (id) => ({
+        url: `/crm/tasks/${id}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: [
+        { type: 'Task', id: 'LIST' },
+        'Dashboard',
+      ],
+    }),
   }),
 });
 
@@ -137,9 +220,14 @@ export const {
   useGetDashboardStatsQuery,
   useGetRevenuePointsQuery,
   useGetOpportunitiesQuery,
+  useCreateOpportunityMutation,
+  useUpdateOpportunityMutation,
+  useDeleteOpportunityMutation,
   useMoveOpportunityMutation,
   useGetDevelopersQuery,
   useGetHeatmapDataQuery,
   useGetTasksQuery,
+  useCreateTaskMutation,
   useUpdateTaskMutation,
+  useDeleteTaskMutation,
 } = crmApi;

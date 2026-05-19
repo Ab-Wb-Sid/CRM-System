@@ -1,11 +1,13 @@
 // ═══════════════════════════════════════════════════════
 //  Contracts Page — Subscription & Renewal Management
 // ═══════════════════════════════════════════════════════
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { GlassCard } from '../components/ui/GlassCard';
 import { NeonBadge } from '../components/ui/NeonBadge';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { useAppDispatch } from '../store';
+import { addNotification } from '../store/slices/uiSlice';
 
 const CONTRACTS = [
   { id: 'con-001', client: 'Orbis Analytics', type: 'Managed Services', mrr: 8000, renewalDate: '2026-07-15', status: 'Active', daysUntilRenewal: 64 },
@@ -23,8 +25,13 @@ const STATUS_COLORS: Record<string, { color: string; bg: string }> = {
 };
 
 export const ContractsPage: React.FC = () => {
-  const totalMRR = CONTRACTS.reduce((s, c) => s + c.mrr, 0);
-  const expiringSoon = CONTRACTS.filter(c => c.daysUntilRenewal <= 60);
+  const dispatch = useAppDispatch();
+  const [renewedIds, setRenewedIds] = useState<string[]>([]);
+  const contracts = CONTRACTS.map(c => renewedIds.includes(c.id)
+    ? { ...c, status: 'Active', daysUntilRenewal: 365 }
+    : c);
+  const totalMRR = contracts.reduce((s, c) => s + c.mrr, 0);
+  const expiringSoon = contracts.filter(c => c.daysUntilRenewal <= 60);
 
   return (
     <div style={{ padding: '24px 28px' }}>
@@ -36,7 +43,7 @@ export const ContractsPage: React.FC = () => {
         style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 24 }}
       >
         {[
-          { label: 'Total Contracts', value: CONTRACTS.length, accent: 'var(--color-neon-blue)' },
+          { label: 'Total Contracts', value: contracts.length, accent: 'var(--color-neon-blue)' },
           { label: 'Total MRR', value: `$${(totalMRR / 1000).toFixed(1)}K`, accent: 'var(--color-neon-green)' },
           { label: 'Expiring in 60d', value: expiringSoon.length, accent: 'var(--color-neon-amber)' },
           { label: 'ARR', value: `$${(totalMRR * 12 / 1000).toFixed(0)}K`, accent: 'var(--color-neon-purple)' },
@@ -97,7 +104,7 @@ export const ContractsPage: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {CONTRACTS.map((contract, i) => {
+              {contracts.map((contract, i) => {
                 const sc = STATUS_COLORS[contract.status];
                 return (
                   <motion.tr
@@ -152,6 +159,14 @@ export const ContractsPage: React.FC = () => {
                     </td>
                     <td style={{ padding: '12px 16px' }}>
                       <button
+                        onClick={() => {
+                          setRenewedIds(ids => ids.includes(contract.id) ? ids : [...ids, contract.id]);
+                          dispatch(addNotification({
+                            type: 'success',
+                            title: 'Contract renewed',
+                            message: `${contract.client} renewal marked for follow-up.`,
+                          }));
+                        }}
                         className="flex items-center gap-1 rounded-lg px-3 py-1 cursor-pointer"
                         style={{
                           fontSize: 11, color: 'var(--color-neon-blue)',

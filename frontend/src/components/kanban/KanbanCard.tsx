@@ -5,12 +5,14 @@ import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { motion } from 'framer-motion';
-import { DollarSign, Calendar, AlertTriangle } from 'lucide-react';
+import { DollarSign, Calendar, AlertTriangle, Pencil, Trash2 } from 'lucide-react';
 import { NeonBadge } from '../ui/NeonBadge';
 import type { Opportunity } from '../../types';
 
 interface KanbanCardProps {
   opportunity: Opportunity;
+  onEdit?: (opportunity: Opportunity) => void;
+  onDelete?: (opportunity: Opportunity) => void;
 }
 
 function isStale(lastActivity: string, thresholdDays = 14): boolean {
@@ -30,7 +32,7 @@ function daysUntil(dateStr: string) {
   return diff;
 }
 
-export const KanbanCard: React.FC<KanbanCardProps> = ({ opportunity: opp }) => {
+export const KanbanCard: React.FC<KanbanCardProps> = ({ opportunity: opp, onEdit, onDelete }) => {
   const {
     attributes, listeners, setNodeRef,
     transform, transition, isDragging,
@@ -68,6 +70,32 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({ opportunity: opp }) => {
           <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)', lineHeight: 1.3, flex: 1 }}>
             {opp.title}
           </p>
+          <div className="flex items-center gap-1" style={{ flexShrink: 0 }}>
+            <button
+              type="button"
+              onPointerDown={e => e.stopPropagation()}
+              onClick={e => {
+                e.stopPropagation();
+                onEdit?.(opp);
+              }}
+              title="Edit deal"
+              style={{ width: 22, height: 22, borderRadius: 6, border: '1px solid var(--color-border)', background: 'rgba(255,255,255,0.04)', color: 'var(--color-text-secondary)', cursor: 'pointer' }}
+            >
+              <Pencil size={11} />
+            </button>
+            <button
+              type="button"
+              onPointerDown={e => e.stopPropagation()}
+              onClick={e => {
+                e.stopPropagation();
+                onDelete?.(opp);
+              }}
+              title="Delete deal"
+              style={{ width: 22, height: 22, borderRadius: 6, border: '1px solid rgba(255,69,58,0.25)', background: 'rgba(255,69,58,0.08)', color: 'var(--color-neon-red)', cursor: 'pointer' }}
+            >
+              <Trash2 size={11} />
+            </button>
+          </div>
           {stale && (
             <div title="No activity for 14+ days">
               <AlertTriangle

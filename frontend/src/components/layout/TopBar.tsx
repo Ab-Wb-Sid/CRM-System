@@ -3,9 +3,10 @@
 // ═══════════════════════════════════════════════════════
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Bell, X } from 'lucide-react';
+import { LogOut, Search, Bell, X } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../../store';
-import { setGlobalSearch, markAllRead, markNotificationRead } from '../../store/slices/uiSlice';
+import { logout } from '../../store/slices/authSlice';
+import { setGlobalSearch, markAllRead, markNotificationRead, addNotification } from '../../store/slices/uiSlice';
 
 const PAGE_TITLES: Record<string, string> = {
   dashboard: 'Dashboard',
@@ -19,6 +20,7 @@ export const TopBar: React.FC = () => {
   const dispatch = useAppDispatch();
   const { activeView, globalSearchQuery, notifications } = useAppSelector(s => s.ui);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [userOpen, setUserOpen] = useState(false);
   const unreadCount = notifications.filter(n => !n.read).length;
 
   const notifColors: Record<string, string> = {
@@ -168,26 +170,62 @@ export const TopBar: React.FC = () => {
         </div>
 
         {/* User Avatar */}
-        <div
-          className="flex items-center gap-2 px-3 py-1.5 rounded-xl cursor-pointer"
-          style={{
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid var(--color-border)',
-          }}
-        >
-          <div
-            className="flex items-center justify-center rounded-lg font-bold text-black"
+        <div className="relative">
+          <button
+            onClick={() => setUserOpen(v => !v)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-xl cursor-pointer"
             style={{
-              width: 28, height: 28, fontSize: 11,
-              background: 'linear-gradient(135deg, var(--color-neon-blue), var(--color-neon-purple))',
+              background: userOpen ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)',
+              border: '1px solid var(--color-border)',
             }}
           >
-            AK
-          </div>
-          <div>
-            <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)', lineHeight: 1.2 }}>Admin</p>
-            <p style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>Project Manager</p>
-          </div>
+            <div
+              className="flex items-center justify-center rounded-lg font-bold text-black"
+              style={{
+                width: 28, height: 28, fontSize: 11,
+                background: 'linear-gradient(135deg, var(--color-neon-blue), var(--color-neon-purple))',
+              }}
+            >
+              AK
+            </div>
+            <div style={{ textAlign: 'left' }}>
+              <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-primary)', lineHeight: 1.2 }}>Admin</p>
+              <p style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>Project Manager</p>
+            </div>
+          </button>
+
+          <AnimatePresence>
+            {userOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: 8, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 8, scale: 0.97 }}
+                className="glass-card absolute right-0 rounded-xl overflow-hidden"
+                style={{ top: 44, width: 190, zIndex: 100 }}
+              >
+                <button
+                  onClick={() => {
+                    dispatch(addNotification({
+                      type: 'info',
+                      title: 'Profile',
+                      message: 'Profile editing is not connected to the backend yet.',
+                    }));
+                    setUserOpen(false);
+                  }}
+                  style={{ width: '100%', padding: '10px 12px', textAlign: 'left', background: 'transparent', border: 'none', color: 'var(--color-text-secondary)', cursor: 'pointer', fontSize: 12 }}
+                >
+                  View profile
+                </button>
+                <button
+                  onClick={() => dispatch(logout())}
+                  className="flex items-center gap-2"
+                  style={{ width: '100%', padding: '10px 12px', background: 'transparent', border: 'none', color: 'var(--color-neon-red)', cursor: 'pointer', fontSize: 12 }}
+                >
+                  <LogOut size={13} /> Sign out
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
     </header>

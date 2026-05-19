@@ -109,6 +109,7 @@ class DeveloperAllocation(Base, TimestampMixin):
     Enables the Resource Heatmap: utilisation = hours_allocated / weekly_capacity.
     """
     __tablename__ = "developer_allocations"
+    __table_args__ = {"implicit_returning": False}
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
