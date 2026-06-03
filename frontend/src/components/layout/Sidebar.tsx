@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, GitBranch, Users, CheckSquare,
-  FileText, ChevronLeft, ChevronRight, Zap,
+  FileText, ChevronLeft, ChevronRight, Zap, BarChart3,
   Settings, HelpCircle,
 } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../../store';
@@ -25,6 +25,7 @@ const NAV_ITEMS: NavItem[] = [
   { icon: GitBranch, label: 'Pipeline', view: 'pipeline', accent: 'var(--color-neon-purple)', badge: 6 },
   { icon: Users, label: 'Resources', view: 'resources', accent: 'var(--color-neon-green)' },
   { icon: CheckSquare, label: 'Tasks', view: 'tasks', accent: 'var(--color-neon-amber)', badge: 3 },
+  { icon: BarChart3, label: 'Reports', view: 'reports', accent: 'var(--color-neon-blue)' },
   { icon: FileText, label: 'Contracts', view: 'contracts', accent: 'var(--color-neon-green)' },
 ];
 

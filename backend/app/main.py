@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import get_settings
-from app.database import verify_connection
+from app.database import initialize_dev_database, is_sqlite, verify_connection
 from app.api.v1.router import api_v1_router
 from app.core.exceptions import (
     AppException,
@@ -32,10 +32,12 @@ async def lifespan(app: FastAPI):
     before any traffic hits the service.
     Shutdown: placeholder for graceful cleanup (e.g., closing external clients).
     """
+    if is_sqlite:
+        initialize_dev_database()
     verify_connection()
-    print(f"✅  {settings.APP_NAME} v{settings.APP_VERSION} started.")
+    print(f"{settings.APP_NAME} v{settings.APP_VERSION} started.")
     yield
-    print("🛑  Application shutting down.")
+    print("Application shutting down.")
 
 
 # ── Application Instance ───────────────────────────────────────────────────────

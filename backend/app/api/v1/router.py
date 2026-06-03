@@ -12,6 +12,7 @@ from app.modules.users.router import router as users_router
 from app.modules.accounts.router import router as accounts_router
 from app.modules.tasks.router import router as tasks_router
 from app.modules.crm.router import router as crm_router
+from app.modules.reports.router import router as reports_router
 from app.api.v1.auth import router as auth_router
 
 api_v1_router = APIRouter()
@@ -25,3 +26,4 @@ api_v1_router.include_router(leads_router, prefix="/leads")
 api_v1_router.include_router(accounts_router, prefix="/accounts")
 api_v1_router.include_router(tasks_router, prefix="/tasks")
 api_v1_router.include_router(crm_router, prefix="/crm")
+api_v1_router.include_router(reports_router, prefix="/reports")

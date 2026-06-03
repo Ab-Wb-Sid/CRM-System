@@ -19,11 +19,14 @@ import {
   useGetTasksQuery,
   useUpdateTaskMutation,
 } from '../../store/api/crmApi';
+import { useAppDispatch } from '../../store';
+import { addNotification } from '../../store/slices/uiSlice';
 import type { Developer, Project, Task, TaskStatus, TaskPriority } from '../../types';
 
 const PRIORITY_ORDER: Record<TaskPriority, number> = { Critical: 0, High: 1, Medium: 2, Low: 3 };
 
 export const TaskGrid: React.FC = () => {
+  const dispatch = useAppDispatch();
   const { data: tasks = [], isLoading } = useGetTasksQuery();
   const { data: developers = [] } = useGetDevelopersQuery();
   const { data: projects = [] } = useGetProjectsQuery();
@@ -35,24 +38,52 @@ export const TaskGrid: React.FC = () => {
 
   const handleCellEdit = useCallback(
     async (id: string, field: keyof Task, value: unknown) => {
-      if (field === 'projectId') {
-        await updateTask({ id, project_id: value ? Number(value) : null });
-        return;
+      try {
+        if (field === 'projectId') {
+          await updateTask({ id, project_id: value ? Number(value) : null }).unwrap();
+          return;
+        }
+        if (field === 'assigneeId') {
+          await updateTask({ id, assigned_to_developer_id: value ? Number(value) : null }).unwrap();
+          return;
+        }
+        if (field === 'dueDate') {
+          await updateTask({
+            id,
+            due_date: value ? new Date(`${value as string}T12:00:00`).toISOString() : null,
+          }).unwrap();
+          return;
+        }
+        await updateTask({ id, [field]: value }).unwrap();
+      } catch {
+        dispatch(addNotification({
+          type: 'error',
+          title: 'Task not saved',
+          message: 'The change could not be written to the database.',
+        }));
       }
-      if (field === 'assigneeId') {
-        await updateTask({ id, assigned_to_developer_id: value ? Number(value) : null });
-        return;
-      }
-      if (field === 'dueDate') {
-        await updateTask({
-          id,
-          due_date: value ? new Date(`${value as string}T12:00:00`).toISOString() : null,
-        });
-        return;
-      }
-      await updateTask({ id, [field]: value });
     },
-    [updateTask],
+    [dispatch, updateTask],
+  );
+
+  const handleDeleteTask = useCallback(
+    async (id: string) => {
+      try {
+        await deleteTask(id).unwrap();
+        dispatch(addNotification({
+          type: 'success',
+          title: 'Task removed',
+          message: 'The task was removed from the database.',
+        }));
+      } catch {
+        dispatch(addNotification({
+          type: 'error',
+          title: 'Task not removed',
+          message: 'The task could not be removed from the database.',
+        }));
+      }
+    },
+    [deleteTask, dispatch],
   );
 
   const columns = useMemo<ColumnDef<Task>[]>(() => [
@@ -195,7 +226,7 @@ export const TaskGrid: React.FC = () => {
       cell: ({ row }) => (
         <button
           type="button"
-          onClick={() => deleteTask(row.original.id)}
+          onClick={() => handleDeleteTask(row.original.id)}
           title="Delete task"
           style={{
             width: 26, height: 26, borderRadius: 6,
@@ -209,11 +240,12 @@ export const TaskGrid: React.FC = () => {
         </button>
       ),
     },
-  ], [deleteTask, developers, handleCellEdit, projects]);
+  ], [developers, handleCellEdit, handleDeleteTask, projects]);
 
   const table = useReactTable({
     data: tasks,
     columns,
+    getRowId: row => row.id,
     state: { sorting, globalFilter, columnFilters },
     onSortingChange: setSorting,
     onGlobalFilterChange: setGlobalFilter,
@@ -403,7 +435,7 @@ const AssigneeSelectCell: React.FC<AssigneeSelectCellProps> = ({ value, develope
       value={selectedDeveloper?.id ?? ''}
       onChange={e => onChange(e.target.value)}
       style={{ fontSize: 11, height: 28, borderRadius: 6, minWidth: 120, width: '100%' }}
-      title="Assign resource"
+      title="Assign employee"
     >
       <option value="">Unassigned</option>
       {developers.map(dev => (

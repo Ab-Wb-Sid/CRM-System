@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "production"  # development | staging | production
 
     # ── MSSQL Database ─────────────────────────────────────────────────────────
+    DATABASE_URL: str = ""          # Optional full SQLAlchemy URL for local/dev overrides
     DB_HOST: str                     # e.g. AW-SID-PC\SQLEXRESS
     DB_PORT: int = 1433
     DB_NAME: str                     # e.g. SanestixCRM
@@ -51,7 +52,12 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # ── CORS ───────────────────────────────────────────────────────────────────
-    ALLOWED_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    ALLOWED_ORIGINS: list[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
 
     # ── Pagination Defaults ────────────────────────────────────────────────────
     DEFAULT_PAGE_SIZE: int = 20
@@ -68,6 +74,9 @@ class Settings(BaseSettings):
         SQL Authentication (DB_TRUSTED_CONNECTION=false):
             mssql+pyodbc://USER:PASS@HOST:PORT/DB?driver=...
         """
+        if self.DATABASE_URL:
+            return self.DATABASE_URL
+
         driver = self.DB_DRIVER  # already URL-encoded (+ for spaces)
         if self.DB_TRUSTED_CONNECTION:
             # Windows Auth — no credentials in URL, pyodbc handles SSPI

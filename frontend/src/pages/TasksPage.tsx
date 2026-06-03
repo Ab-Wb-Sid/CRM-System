@@ -166,20 +166,36 @@ export const TasksPage: React.FC = () => {
                     }));
                     return;
                   }
-                  await createTask({
-                    title: taskTitle.trim(),
-                    status: taskStatus,
-                    due_date: taskDueDate ? new Date(`${taskDueDate}T12:00:00`).toISOString() : null,
-                    project_id: taskProjectId ? Number(taskProjectId) : null,
-                    assigned_to_developer_id: taskDeveloperId ? Number(taskDeveloperId) : null,
-                  }).unwrap();
-                  dispatch(addNotification({
-                    type: 'success',
-                    title: 'Task created',
-                    message: `"${taskTitle.trim()}" was inserted into the database.`,
-                  }));
-                  setTaskTitle('');
-                  setNewTaskOpen(false);
+                  if (!taskDeveloperId) {
+                    dispatch(addNotification({
+                      type: 'warning',
+                      title: 'Missing assignee',
+                      message: 'Select an employee before saving the task.',
+                    }));
+                    return;
+                  }
+                  try {
+                    await createTask({
+                      title: taskTitle.trim(),
+                      status: taskStatus,
+                      due_date: taskDueDate ? new Date(`${taskDueDate}T12:00:00`).toISOString() : null,
+                      project_id: taskProjectId ? Number(taskProjectId) : null,
+                      assigned_to_developer_id: Number(taskDeveloperId),
+                    }).unwrap();
+                    dispatch(addNotification({
+                      type: 'success',
+                      title: 'Task created',
+                      message: `"${taskTitle.trim()}" was inserted into the database.`,
+                    }));
+                    setTaskTitle('');
+                    setNewTaskOpen(false);
+                  } catch {
+                    dispatch(addNotification({
+                      type: 'error',
+                      title: 'Task not created',
+                      message: 'The task could not be written to the database.',
+                    }));
+                  }
                 }}
                 className="rounded-lg px-3 py-1.5 cursor-pointer"
                 style={{ background: 'var(--color-neon-blue)', border: 'none', color: '#000', fontWeight: 700 }}

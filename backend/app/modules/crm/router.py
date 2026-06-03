@@ -113,7 +113,18 @@ def _opportunity_to_dict(opp: Opportunity, db: Session) -> dict[str, Any]:
 
 
 def _task_to_dict(task: Task, db: Session) -> dict[str, Any]:
-    assignee_name = task.assigned_to.full_name if task.assigned_to else ""
+    assignee_id = ""
+    assignee_name = ""
+    if task.assigned_to_id:
+        developer = db.scalar(
+            select(Developer).where(
+                Developer.user_id == task.assigned_to_id,
+                Developer.is_deleted == False,  # noqa: E712
+            )
+        )
+        if developer:
+            assignee_id = str(developer.id)
+            assignee_name = developer.name
     project: Project | None = None
     if getattr(task, "project_id", None):
         project = db.get(Project, task.project_id)
@@ -129,7 +140,7 @@ def _task_to_dict(task: Task, db: Session) -> dict[str, Any]:
         "projectId": str(project.id if project else ""),
         "projectName": project.name if project else "",
         "title": task.title,
-        "assigneeId": str(task.assigned_to_id),
+        "assigneeId": assignee_id,
         "assigneeName": assignee_name,
         "status": _map_task_status(task.status),
         "priority": "Medium",
@@ -203,6 +214,18 @@ def _ensure_developer_user(dev: Developer, db: Session) -> int:
     dev.updated_at = datetime.now(timezone.utc)
     db.flush()
     return user.id
+
+
+def _developer_for_user_id(user_id: int | None, db: Session) -> Developer | None:
+    if user_id is None:
+        return None
+    return db.scalar(
+        select(Developer).where(
+            Developer.user_id == user_id,
+            Developer.is_active == True,  # noqa: E712
+            Developer.is_deleted == False,  # noqa: E712
+        )
+    )
 
 
 def _project_to_dict(project: Project) -> dict[str, Any]:
@@ -585,27 +608,7 @@ def get_developers(
         ).order_by(Developer.name)
     ).all()
 
-    result = []
-    for dev in devs:
-        allocations = [
-            {
-                "projectId": str(a.project_id),
-                "projectName": a.project.name if a.project else "",
-                "weekStart": a.week_start.isoformat(),
-                "hoursAllocated": a.hours_allocated,
-            }
-            for a in dev.allocations
-        ]
-        result.append({
-            "id": str(dev.id),
-            "name": dev.name,
-            "role": dev.role,
-            "avatar": dev.avatar_initials,
-            "skills": dev.skills or [],
-            "weeklyCapacity": dev.weekly_capacity,
-            "allocations": allocations,
-        })
-    return result
+    return [_developer_to_dict(dev) for dev in devs]
 
 
 @router.post(
@@ -837,6 +840,7 @@ def _map_task_status(db_status: str) -> str:
     mapping = {
         "pending":     "Backlog",
         "in_progress": "In Progress",
+        "in_review":   "In Review",
         "completed":   "Done",
         "cancelled":   "Blocked",
     }
@@ -847,7 +851,7 @@ def _reverse_map_task_status(ui_status: str) -> str:
     mapping = {
         "Backlog": "pending",
         "In Progress": "in_progress",
-        "In Review": "in_progress",
+        "In Review": "in_review",
         "Done": "completed",
         "Blocked": "cancelled",
     }
@@ -875,14 +879,21 @@ def create_task(
             raise BadRequestException("Project does not exist.")
         opportunity_id = project.opportunity_id or opportunity_id
 
-    assignee_id = payload.assigned_to_id or current_user.id
+    assignee_id: int | None = None
     if payload.assigned_to_developer_id is not None:
         developer = db.get(Developer, payload.assigned_to_developer_id)
-        if not developer or developer.is_deleted:
+        if not developer or developer.is_deleted or not developer.is_active:
             raise BadRequestException("Assigned resource does not exist.")
         assignee_id = _ensure_developer_user(developer, db)
+    elif payload.assigned_to_id is not None:
+        developer = _developer_for_user_id(payload.assigned_to_id, db)
+        if developer is None:
+            raise BadRequestException("Tasks must be assigned to an active employee.")
+        assignee_id = _ensure_developer_user(developer, db)
+    else:
+        raise BadRequestException("Select an employee before creating a task.")
 
-    if not db.get(User, assignee_id):
+    if assignee_id is None or not db.get(User, assignee_id):
         raise BadRequestException("Assigned user does not exist.")
 
     task = Task(
@@ -920,30 +931,43 @@ def update_task(
     if not task or task.is_deleted:
         raise NotFoundException(f"Task {task_id} not found.")
 
-    if body.status is not None:
+    updated_fields = body.model_fields_set
+
+    if "status" in updated_fields:
         task.status = _reverse_map_task_status(body.status)
-    if body.title is not None:
+    if "title" in updated_fields:
         task.title = body.title
-    if body.description is not None:
+    if "description" in updated_fields:
         task.description = body.description
-    if body.due_date is not None:
+    if "due_date" in updated_fields:
         task.due_date = body.due_date
-    if body.project_id is not None:
-        project = db.get(Project, body.project_id)
-        if not project or project.is_deleted:
-            raise BadRequestException("Project does not exist.")
-        task.project_id = body.project_id
-        task.opportunity_id = project.opportunity_id or task.opportunity_id
+    if "project_id" in updated_fields:
+        if body.project_id is None:
+            task.project_id = None
+            task.opportunity_id = None
+        else:
+            project = db.get(Project, body.project_id)
+            if not project or project.is_deleted:
+                raise BadRequestException("Project does not exist.")
+            task.project_id = body.project_id
+            task.opportunity_id = project.opportunity_id or task.opportunity_id
         task.lead_id = None
-    if body.assigned_to_developer_id is not None:
-        developer = db.get(Developer, body.assigned_to_developer_id)
-        if not developer or developer.is_deleted:
-            raise BadRequestException("Assigned resource does not exist.")
-        task.assigned_to_id = _ensure_developer_user(developer, db)
-    if body.assigned_to_id is not None:
-        if not db.get(User, body.assigned_to_id):
-            raise BadRequestException("Assigned user does not exist.")
-        task.assigned_to_id = body.assigned_to_id
+    if "assigned_to_developer_id" in updated_fields:
+        if body.assigned_to_developer_id is None:
+            task.assigned_to_id = None
+        else:
+            developer = db.get(Developer, body.assigned_to_developer_id)
+            if not developer or developer.is_deleted or not developer.is_active:
+                raise BadRequestException("Assigned resource does not exist.")
+            task.assigned_to_id = _ensure_developer_user(developer, db)
+    if "assigned_to_id" in updated_fields:
+        if body.assigned_to_id is None:
+            task.assigned_to_id = None
+        else:
+            developer = _developer_for_user_id(body.assigned_to_id, db)
+            if developer is None:
+                raise BadRequestException("Tasks must be assigned to an active employee.")
+            task.assigned_to_id = _ensure_developer_user(developer, db)
 
     task.updated_at = datetime.now(timezone.utc)
     db.commit()

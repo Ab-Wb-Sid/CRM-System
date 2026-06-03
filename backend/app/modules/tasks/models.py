@@ -23,6 +23,7 @@ class TaskType(StrEnum):
 class TaskStatus(StrEnum):
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
+    IN_REVIEW = "in_review"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
 
@@ -56,10 +57,10 @@ class Task(Base, TimestampMixin, SoftDeleteMixin):
         Integer, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
     )
 
-    assigned_to_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="NO ACTION"), nullable=False
+    assigned_to_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="NO ACTION"), nullable=True
     )
-    assigned_to: Mapped["User"] = relationship(  # noqa: F821
+    assigned_to: Mapped["User | None"] = relationship(  # noqa: F821
         "User",
         back_populates="tasks",
         foreign_keys=[assigned_to_id],

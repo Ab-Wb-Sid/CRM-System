@@ -10,6 +10,7 @@ import { DashboardPage } from '../../pages/DashboardPage';
 import { PipelinePage } from '../../pages/PipelinePage';
 import { ResourcesPage } from '../../pages/ResourcesPage';
 import { TasksPage } from '../../pages/TasksPage';
+import { ReportsPage } from '../../pages/ReportsPage';
 import { ContractsPage } from '../../pages/ContractsPage';
 
 const PAGE_MAP: Record<string, React.FC> = {
@@ -17,6 +18,7 @@ const PAGE_MAP: Record<string, React.FC> = {
   pipeline: PipelinePage,
   resources: ResourcesPage,
   tasks: TasksPage,
+  reports: ReportsPage,
   contracts: ContractsPage,
 };
 

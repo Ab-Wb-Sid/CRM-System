@@ -128,9 +128,18 @@ export interface HeatmapCell {
 // ─── UI State ────────────────────────────────────────────
 export interface UiState {
   sidebarCollapsed: boolean;
-  activeView: 'dashboard' | 'pipeline' | 'resources' | 'tasks' | 'contracts';
+  activeView: 'dashboard' | 'pipeline' | 'resources' | 'tasks' | 'reports' | 'contracts';
   globalSearchQuery: string;
   notifications: Notification[];
+}
+
+export type ReportType = 'dashboard' | 'pipeline' | 'resources' | 'tasks';
+
+export interface GeneratedReport {
+  type: ReportType;
+  generated_at: string;
+  row_count: number;
+  rows: Record<string, string | number | null>[];
 }
 
 export interface Notification {

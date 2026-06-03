@@ -7,7 +7,7 @@ import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import type { RootState } from '../index';
 import type {
   Opportunity, Developer, Task, DashboardStats,
-  RevenuePoint, HeatmapCell, OpportunityStage, Project,
+  RevenuePoint, HeatmapCell, OpportunityStage, Project, GeneratedReport, ReportType,
 } from '../../types';
 
 // ── Auth types ─────────────────────────────────────────
@@ -58,7 +58,7 @@ export interface DeveloperWriteRequest {
 }
 
 // ── Base URL ───────────────────────────────────────────
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000/api/v1';
+export const API_BASE = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000/api/v1';
 
 export const crmApi = createApi({
   reducerPath: 'crmApi',
@@ -73,7 +73,7 @@ export const crmApi = createApi({
       return headers;
     },
   }),
-  tagTypes: ['Opportunity', 'Task', 'Developer', 'Dashboard'],
+  tagTypes: ['Opportunity', 'Task', 'Developer', 'Dashboard', 'Report'],
   endpoints: (builder) => ({
 
     // ── Authentication ──────────────────────────────────
@@ -206,6 +206,11 @@ export const crmApi = createApi({
       query: () => '/crm/projects',
     }),
 
+    getReport: builder.query<GeneratedReport, ReportType>({
+      query: (reportType) => `/reports?report_type=${reportType}`,
+      providesTags: (_result, _error, reportType) => [{ type: 'Report', id: reportType }],
+    }),
+
     // ── Tasks / Data Grid ─────────────────────────────
     getTasks: builder.query<Task[], void>({
       query: () => '/crm/tasks',
@@ -224,6 +229,20 @@ export const crmApi = createApi({
         method: 'POST',
         body,
       }),
+      async onQueryStarted(_body, { dispatch, queryFulfilled }) {
+        try {
+          const { data: createdTask } = await queryFulfilled;
+          dispatch(
+            crmApi.util.updateQueryData('getTasks', undefined, (draft) => {
+              if (!draft.some(task => task.id === createdTask.id)) {
+                draft.unshift(createdTask);
+              }
+            }),
+          );
+        } catch {
+          // Error handling is done in the component so the user sees a toast.
+        }
+      },
       invalidatesTags: [
         { type: 'Task', id: 'LIST' },
         'Dashboard',
@@ -275,6 +294,7 @@ export const {
   useDeleteDeveloperMutation,
   useGetHeatmapDataQuery,
   useGetProjectsQuery,
+  useGetReportQuery,
   useGetTasksQuery,
   useCreateTaskMutation,
   useUpdateTaskMutation,
